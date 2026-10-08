@@ -1,8 +1,11 @@
 {
-  "version": 2,
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/gas", "destination": "/api/gas" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/.*).*)",
+      "destination": "/index.html"
+    }
   ]
 }

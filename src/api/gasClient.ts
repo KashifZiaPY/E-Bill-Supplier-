@@ -173,43 +173,53 @@ class GasClient {
   private async callGas(action: string, payload: any = {}): Promise<any> {
     const pin = this.getPin();
 
+    const response = await fetch('/api/gas', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-app-pin': pin,
+      },
+      body: JSON.stringify({ action, payload }),
+    });
+
+    if (response.status === 401) {
+      throw new Error('Incorrect PIN. Please re-enter your 4-digit PIN.');
+    }
+
+    let data: any;
+    const responseText = await response.text();
     try {
-      const response = await fetch('/api/gas', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-app-pin': pin,
-        },
-        body: JSON.stringify({ action, payload }),
-      });
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(
+        `Server returned non-JSON response (${response.status}): ${responseText.substring(0, 150)}`
+      );
+    }
 
-      if (response.status === 401) {
-        throw new Error('Incorrect PIN. Please re-enter your 4-digit PIN.');
-      }
-
-      const data = await response.json();
-
-      // If backend indicates GAS_URL is not configured yet, fallback to local storage
-      if (data && data.notConfigured) {
+    // If GAS_URL is not configured on Vercel
+    if (data && data.notConfigured) {
+      if (action === 'bootstrap') {
         this.setIsOfflineMode(true);
         return this.localCall(action, payload);
       }
-
-      if (!response.ok || data.ok === false) {
-        throw new Error(data.error || `Server error (${response.status})`);
-      }
-
-      this.setIsOfflineMode(false);
-      return data.data || data;
-    } catch (err: any) {
-      if (err.message && err.message.includes('Incorrect PIN')) {
-        throw err;
-      }
-      // If network fails (e.g. offline or no GAS server), use local store
-      console.warn('API error, falling back to local store:', err);
-      this.setIsOfflineMode(true);
-      return this.localCall(action, payload);
+      throw new Error(
+        'GAS_URL is not configured in Vercel Environment Variables. Please add GAS_URL and GAS_API_KEY in Vercel Project Settings.'
+      );
     }
+
+    if (!response.ok || data.ok === false) {
+      const errMsg = data.error || `Google Apps Script returned an error (HTTP ${response.status})`;
+      // For read bootstrap, fallback to cache if server is unreachable, but for write actions always throw error
+      if (action === 'bootstrap') {
+        console.warn('Bootstrap API error, falling back to local cache:', errMsg);
+        this.setIsOfflineMode(true);
+        return this.localCall(action, payload);
+      }
+      throw new Error(errMsg);
+    }
+
+    this.setIsOfflineMode(false);
+    return data.data || data;
   }
 
   // --- Local Simulated Storage Fallback ---
@@ -382,7 +392,56 @@ class GasClient {
   }
 
   async saveDoc(doc: any): Promise<{ ok: boolean; docId: string; docNo: string }> {
-    const res = await this.callGas('saveDoc', { doc });
+    // Normalize line items for complete compatibility with Code.gs
+    const normalizedItems = (doc.items || []).map((it: any, idx: number) => {
+      const q = Number(it.qty ?? it.Qty ?? 1);
+      const r = Number(it.rate ?? it.Rate ?? 0);
+      const a = Number(it.amount ?? it.Amount ?? Math.round(q * r * 100) / 100);
+      return {
+        sr: it.sr || idx + 1,
+        Sr: it.sr || idx + 1,
+        description: it.description || it.Description || '',
+        Description: it.description || it.Description || '',
+        unit: it.unit || it.Unit || 'Nos',
+        Unit: it.unit || it.Unit || 'Nos',
+        qty: q,
+        Qty: q,
+        rate: r,
+        Rate: r,
+        tax: it.tax || it.Tax || 'GST',
+        Tax: it.tax || it.Tax || 'GST',
+        amount: a,
+        Amount: a,
+      };
+    });
+
+    const normalizedDoc = {
+      ...doc,
+      docId: doc.docId || doc.DocID || '',
+      DocID: doc.docId || doc.DocID || '',
+      type: doc.type || doc.Type || 'BILL',
+      Type: doc.type || doc.Type || 'BILL',
+      docNo: doc.docNo || doc.DocNo || '',
+      DocNo: doc.docNo || doc.DocNo || '',
+      date: doc.date || doc.Date || '',
+      Date: doc.date || doc.Date || '',
+      validUntil: doc.validUntil || doc.ValidUntil || '',
+      ValidUntil: doc.validUntil || doc.ValidUntil || '',
+      clientName: doc.clientName || doc.ClientName || '',
+      ClientName: doc.clientName || doc.ClientName || '',
+      clientAddress: doc.clientAddress || doc.ClientAddress || '',
+      ClientAddress: doc.clientAddress || doc.ClientAddress || '',
+      clientNTN: doc.clientNTN || doc.ClientNTN || '',
+      ClientNTN: doc.clientNTN || doc.ClientNTN || '',
+      refText: doc.refText || doc.RefText || '',
+      RefText: doc.refText || doc.RefText || '',
+      requestId: doc.requestId || doc.RequestId || '',
+      RequestId: doc.requestId || doc.RequestId || '',
+      items: normalizedItems,
+      Items: normalizedItems,
+    };
+
+    const res = await this.callGas('saveDoc', { doc: normalizedDoc });
     return res;
   }
 
@@ -394,6 +453,88 @@ class GasClient {
   async saveSettings(settings: SupplierSettings): Promise<{ ok: boolean }> {
     const res = await this.callGas('saveSettings', { settings });
     return res;
+  }
+
+  // Diagnostic tool to check backend connection status
+  async checkBackendStatus(): Promise<{
+    ok: boolean;
+    gasConfigured: boolean;
+    gasApiKeyConfigured: boolean;
+    appPinConfigured: boolean;
+    message: string;
+  }> {
+    try {
+      const pin = this.getPin();
+      const response = await fetch('/api/gas', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-app-pin': pin,
+        },
+        body: JSON.stringify({ action: 'checkConfig' }),
+      });
+
+      if (response.status === 401) {
+        return {
+          ok: false,
+          gasConfigured: false,
+          gasApiKeyConfigured: false,
+          appPinConfigured: false,
+          message: 'PIN rejected by server. Check that your device PIN matches APP_PIN.',
+        };
+      }
+
+      const data = await response.json();
+      const config = data?.config || {};
+
+      if (!config.gasUrlConfigured) {
+        return {
+          ok: false,
+          gasConfigured: false,
+          gasApiKeyConfigured: !!config.gasApiKeyConfigured,
+          appPinConfigured: !!config.appPinConfigured,
+          message: 'GAS_URL is missing in Vercel Environment Variables. Add GAS_URL in Vercel Project Settings.',
+        };
+      }
+
+      // If gasUrl is configured, attempt bootstrap to test live sheet connectivity
+      try {
+        const testRes = await this.callGas('bootstrap', {});
+        if (testRes) {
+          return {
+            ok: true,
+            gasConfigured: true,
+            gasApiKeyConfigured: !!config.gasApiKeyConfigured,
+            appPinConfigured: !!config.appPinConfigured,
+            message: 'Connected to Google Sheet successfully! Reading and writing live data.',
+          };
+        }
+      } catch (err: any) {
+        return {
+          ok: false,
+          gasConfigured: true,
+          gasApiKeyConfigured: !!config.gasApiKeyConfigured,
+          appPinConfigured: !!config.appPinConfigured,
+          message: `Google Apps Script error: ${err.message}`,
+        };
+      }
+
+      return {
+        ok: true,
+        gasConfigured: true,
+        gasApiKeyConfigured: !!config.gasApiKeyConfigured,
+        appPinConfigured: !!config.appPinConfigured,
+        message: 'Google Apps Script proxy is active.',
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        gasConfigured: false,
+        gasApiKeyConfigured: false,
+        appPinConfigured: false,
+        message: `Failed to reach server: ${err.message}`,
+      };
+    }
   }
 
   // Verify PIN against backend

@@ -81,9 +81,19 @@ export const HomeScreen: React.FC<Props> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {isOfflineMode && (
-              <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                Local / Demo Mode
+            {isOfflineMode ? (
+              <button
+                onClick={onOpenSettings}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 hover:bg-amber-200 transition cursor-pointer"
+                title="Tap to check Google Sheet connection"
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <span>Local Mode (Connect Sheet)</span>
+              </button>
+            ) : (
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Sheet Connected</span>
               </span>
             )}
             <button
