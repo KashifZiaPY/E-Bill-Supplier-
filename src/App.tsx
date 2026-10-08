@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type {
   CatalogItem,
   DocumentRecord,
@@ -17,6 +17,7 @@ import { HomeScreen } from './components/HomeScreen';
 import { EntryFormScreen } from './components/EntryFormScreen';
 import { PreviewScreen } from './components/PreviewScreen';
 import { SettingsScreen } from './components/SettingsScreen';
+import { ClientModal } from './components/ClientModal';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { generateUUID } from './utils/formatters';
 
@@ -32,6 +33,7 @@ export default function App() {
 
   // App data
   const [settings, setSettings] = useState<SupplierSettings>(DEFAULT_SETTINGS);
+  const [activeFirmId, setActiveFirmId] = useState<string>(DEFAULT_SETTINGS.activeFirmId || 'firm-anwar-traders');
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [clients, setClients] = useState<SavedClient[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
@@ -42,6 +44,10 @@ export default function App() {
   const [activeDoc, setActiveDoc] = useState<DocumentRecord | null>(null);
   const [formDocType, setFormDocType] = useState<DocType>('BILL');
   const [editingDoc, setEditingDoc] = useState<Partial<DocumentRecord> | null>(null);
+
+  // Client Modal state
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState<SavedClient | null>(null);
 
   // Toast notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -64,7 +70,12 @@ export default function App() {
       setIsLoading(true);
       const data = await gasApi.bootstrap();
       if (data) {
-        if (data.settings) setSettings(data.settings);
+        if (data.settings) {
+          setSettings(data.settings);
+          if (data.settings.activeFirmId) {
+            setActiveFirmId(data.settings.activeFirmId);
+          }
+        }
         if (data.docs) setDocs(data.docs);
         if (data.clients) setClients(data.clients);
         if (data.catalog) setCatalog(data.catalog);
@@ -94,6 +105,17 @@ export default function App() {
     }
   }, [loadBootstrapData]);
 
+  // Current active firm helper
+  const currentFirm = useMemo(() => {
+    const list = settings.firms || [];
+    return list.find((f) => f.id === activeFirmId) || list[0] || {
+      id: 'firm-anwar-traders',
+      name: 'Anwar Traders',
+      nextBillNo: '101',
+      nextQuoteNo: 'Q-201',
+    };
+  }, [settings.firms, activeFirmId]);
+
   // Handle PIN verification
   const handlePinSubmit = async (pin: string) => {
     setIsVerifyingPin(true);
@@ -102,7 +124,7 @@ export default function App() {
       const ok = await gasApi.verifyPin(pin);
       if (ok) {
         setIsAuthenticated(true);
-        showToast('Welcome to Anwar Traders Billing Portal', 'success');
+        showToast(`Welcome to ${settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Portal`, 'success');
         await loadBootstrapData();
       } else {
         setPinError('Incorrect PIN. Please enter the valid 4-digit PIN.');
@@ -126,7 +148,9 @@ export default function App() {
     setFormDocType('BILL');
     setEditingDoc({
       type: 'BILL',
-      docNo: settings.nextBillNo || '101',
+      firmId: currentFirm.id,
+      firmName: currentFirm.name,
+      docNo: currentFirm.nextBillNo || '101',
       requestId: generateUUID(),
       items: [],
     });
@@ -137,7 +161,9 @@ export default function App() {
     setFormDocType('QUOTATION');
     setEditingDoc({
       type: 'QUOTATION',
-      docNo: settings.nextQuoteNo || 'Q-201',
+      firmId: currentFirm.id,
+      firmName: currentFirm.name,
+      docNo: currentFirm.nextQuoteNo || 'Q-201',
       requestId: generateUUID(),
       items: [],
     });
@@ -150,7 +176,6 @@ export default function App() {
 
   const handleSelectDoc = async (doc: DocumentRecord) => {
     const docId = doc.docId || doc.DocID;
-    // If doc already has items, use directly, otherwise load
     if (doc.items && doc.items.length > 0) {
       setActiveDoc(doc);
       setCurrentScreen('PREVIEW');
@@ -179,7 +204,7 @@ export default function App() {
         const full = await gasApi.getDoc(docId);
         fullDoc = { ...doc, items: full.items || [] };
       } catch {
-        // use doc as is
+        // use doc
       }
     }
     setFormDocType(doc.type || doc.Type || 'BILL');
@@ -200,7 +225,7 @@ export default function App() {
     }
 
     const docType = doc.type || doc.Type || 'BILL';
-    const nextNo = docType === 'BILL' ? settings.nextBillNo : settings.nextQuoteNo;
+    const nextNo = docType === 'BILL' ? currentFirm.nextBillNo : currentFirm.nextQuoteNo;
 
     setFormDocType(docType);
     setEditingDoc({
@@ -236,8 +261,8 @@ export default function App() {
       Type: 'BILL',
       docId: undefined,
       DocID: undefined,
-      docNo: settings.nextBillNo || '101',
-      DocNo: settings.nextBillNo || '101',
+      docNo: currentFirm.nextBillNo || '101',
+      DocNo: currentFirm.nextBillNo || '101',
       date: new Date().toISOString().split('T')[0],
       Date: new Date().toISOString().split('T')[0],
       validUntil: undefined,
@@ -269,10 +294,8 @@ export default function App() {
       const res = await gasApi.saveDoc(docData);
       if (res && res.ok) {
         showToast(`Document #${res.docNo} saved successfully!`, 'success');
-        // Refresh bootstrap data in background
         await loadBootstrapData();
 
-        // If previewAfter requested, prepare full doc and open preview
         if (previewAfter) {
           const savedDoc: DocumentRecord = {
             ...docData,
@@ -303,7 +326,7 @@ export default function App() {
       const res = await gasApi.saveSettings(newSettings);
       if (res && res.ok) {
         setSettings(newSettings);
-        showToast('Settings updated successfully!', 'success');
+        showToast('Settings & Firm configurations saved successfully!', 'success');
         setCurrentScreen('HOME');
       }
     } catch (err: any) {
@@ -311,6 +334,29 @@ export default function App() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Client Management Handlers
+  const handleOpenAddClient = () => {
+    setClientToEdit(null);
+    setIsClientModalOpen(true);
+  };
+
+  const handleOpenEditClient = (client: SavedClient) => {
+    setClientToEdit(client);
+    setIsClientModalOpen(true);
+  };
+
+  const handleSaveClient = async (client: SavedClient) => {
+    await gasApi.saveClient(client);
+    await loadBootstrapData();
+    showToast(`Client "${client.name}" saved successfully`, 'success');
+  };
+
+  const handleDeleteClient = async (clientId: string, clientName: string) => {
+    await gasApi.deleteClient(clientId, clientName);
+    await loadBootstrapData();
+    showToast(`Client "${clientName}" removed`, 'info');
   };
 
   // If not authenticated, render PIN Screen
@@ -336,7 +382,10 @@ export default function App() {
         <HomeScreen
           docs={docs}
           settings={settings}
+          clients={clients}
           isOfflineMode={isOfflineMode}
+          activeFirmId={activeFirmId}
+          onSelectFirm={(id) => setActiveFirmId(id)}
           onNewBill={handleNewBill}
           onNewQuotation={handleNewQuotation}
           onOpenSettings={handleOpenSettings}
@@ -347,6 +396,9 @@ export default function App() {
           onCancelDoc={handleCancelDoc}
           onRefresh={loadBootstrapData}
           onLock={handleLock}
+          onOpenAddClient={handleOpenAddClient}
+          onEditClient={handleOpenEditClient}
+          onDeleteClient={handleDeleteClient}
         />
       )}
 
@@ -383,6 +435,14 @@ export default function App() {
           isSaving={isSaving}
         />
       )}
+
+      {/* Client Add / Edit Modal */}
+      <ClientModal
+        isOpen={isClientModalOpen}
+        onClose={() => setIsClientModalOpen(false)}
+        onSave={handleSaveClient}
+        clientToEdit={clientToEdit}
+      />
     </>
   );
 }

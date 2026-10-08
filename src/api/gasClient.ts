@@ -1,37 +1,73 @@
 // Client for communicating with the serverless /api/gas proxy or local simulated storage
 
-import type { BootstrapData, DocumentRecord, LineItem, SupplierSettings } from '../types/billing';
+import type { BootstrapData, DocumentRecord, FirmProfile, LineItem, SavedClient, SupplierSettings } from '../types/billing';
 import { calculateTotals } from '../utils/formatters';
 
-const STORAGE_KEY_SETTINGS = 'anwar_traders_settings';
-const STORAGE_KEY_CLIENTS = 'anwar_traders_clients';
-const STORAGE_KEY_DOCS = 'anwar_traders_docs';
-const STORAGE_KEY_CATALOG = 'anwar_traders_catalog';
+const STORAGE_KEY_SETTINGS = 'anwar_traders_settings_v2';
+const STORAGE_KEY_CLIENTS = 'anwar_traders_clients_v2';
+const STORAGE_KEY_DOCS = 'anwar_traders_docs_v2';
+const STORAGE_KEY_CATALOG = 'anwar_traders_catalog_v2';
 const STORAGE_KEY_OFFLINE_MODE = 'anwar_traders_offline_mode';
 
+export const DEFAULT_FIRMS: FirmProfile[] = [
+  {
+    id: 'firm-anwar-traders',
+    name: 'Anwar Traders',
+    tagline: 'General Order Suppliers & Govt Contractors',
+    address: 'Suit # 14, 2nd Floor, Al-Rehman Centre, Bank Road, Rawalpindi',
+    phone: '0300-5123456 / 051-5551234',
+    ntn: '1428392-7',
+    gst: '07-01-9876-543-21',
+    vendorNo: 'V-40892',
+    gstRate: 0.18,
+    pstRate: 0.16,
+    letterheadTop: 2.5,
+    letterheadBottom: 1.5,
+    nextBillNo: '101',
+    nextQuoteNo: 'Q-201',
+  },
+  {
+    id: 'firm-hashir-traders',
+    name: 'Hashir Traders',
+    tagline: 'Govt Order Suppliers & Mechanical/Civil Contractors',
+    address: 'Office # 08, Commercial Complex, Rawalpindi',
+    phone: '0300-9876543 / 051-5558899',
+    ntn: '2948172-5',
+    gst: '07-02-4567-890-12',
+    vendorNo: 'V-51290',
+    gstRate: 0.18,
+    pstRate: 0.16,
+    letterheadTop: 2.5,
+    letterheadBottom: 1.5,
+    nextBillNo: '201',
+    nextQuoteNo: 'HQ-101',
+  },
+];
+
 export const DEFAULT_SETTINGS: SupplierSettings = {
-  supplierName: 'Anwar Traders',
-  supplierTagline: 'General Order Suppliers & Govt Contractors',
-  supplierAddress: 'Suit # 14, 2nd Floor, Al-Rehman Centre, Bank Road, Rawalpindi',
-  supplierPhone: '0300-5123456 / 051-5551234',
-  supplierNTN: '1428392-7',
-  supplierGST: '07-01-9876-543-21',
-  vendorNo: 'V-40892',
-  gstRate: 0.18,
-  pstRate: 0.16,
-  letterheadTop: 2.5,
-  letterheadBottom: 1.5,
-  nextBillNo: '101',
-  nextQuoteNo: 'Q-201',
+  ownerName: 'MIAN FARHAN ANWAR',
+  activeFirmId: 'firm-anwar-traders',
+  firms: DEFAULT_FIRMS,
+  supplierName: DEFAULT_FIRMS[0].name,
+  supplierTagline: DEFAULT_FIRMS[0].tagline,
+  supplierAddress: DEFAULT_FIRMS[0].address,
+  supplierPhone: DEFAULT_FIRMS[0].phone,
+  supplierNTN: DEFAULT_FIRMS[0].ntn,
+  supplierGST: DEFAULT_FIRMS[0].gst,
+  vendorNo: DEFAULT_FIRMS[0].vendorNo,
+  gstRate: DEFAULT_FIRMS[0].gstRate,
+  pstRate: DEFAULT_FIRMS[0].pstRate,
+  letterheadTop: DEFAULT_FIRMS[0].letterheadTop,
+  letterheadBottom: DEFAULT_FIRMS[0].letterheadBottom,
+  nextBillNo: DEFAULT_FIRMS[0].nextBillNo,
+  nextQuoteNo: DEFAULT_FIRMS[0].nextQuoteNo,
 };
 
-// Seed sample PO Petty-187365 (Grand total 99,768.30) for testing
-// Goods: 64,550 + 18% GST (11,619.00) = 76,169.00
-// Services: 20,344.22 + 16% PST (3,255.08) = 23,599.30
-// Total = 99,768.30
 export const SEED_PETTY_DOC: DocumentRecord = {
   docId: 'doc-petty-187365',
   DocID: 'doc-petty-187365',
+  firmId: 'firm-anwar-traders',
+  firmName: 'Anwar Traders',
   type: 'BILL',
   Type: 'BILL',
   docNo: '100',
@@ -120,21 +156,36 @@ export const SEED_CATALOG = [
   { description: 'Computerized Engine Diagnostics & Tuning', unit: 'Job', rate: 3500, tax: 'PST' as const },
 ];
 
-export const SEED_CLIENTS = [
+export const SEED_CLIENTS: SavedClient[] = [
   {
+    id: 'client-1',
     name: 'Director General Health Services Punjab',
     address: '24-Cooper Road, Lahore',
     ntn: '9010203-4',
+    phone: '042-99201139',
+    contactPerson: 'Director Admin & Procurement',
+    totalOrders: 14,
+    totalBilled: 1245000,
   },
   {
+    id: 'client-2',
     name: 'Secretary Communication & Works Department',
     address: 'Punjab Civil Secretariat, Lower Mall, Lahore',
     ntn: '9020304-5',
+    phone: '042-99211244',
+    contactPerson: 'Section Officer (General)',
+    totalOrders: 8,
+    totalBilled: 890000,
   },
   {
+    id: 'client-3',
     name: 'District Health Authority Rawalpindi',
     address: 'Khyaban-e-Sir Syed, Rawalpindi',
     ntn: '9030405-6',
+    phone: '051-9290044',
+    contactPerson: 'Chief Executive Officer DHA',
+    totalOrders: 5,
+    totalBilled: 420000,
   },
 ];
 
@@ -196,7 +247,6 @@ class GasClient {
       );
     }
 
-    // If GAS_URL is not configured on Vercel
     if (data && data.notConfigured) {
       if (action === 'bootstrap') {
         this.setIsOfflineMode(true);
@@ -209,9 +259,8 @@ class GasClient {
 
     if (!response.ok || data.ok === false) {
       const errMsg = data.error || `Google Apps Script returned an error (HTTP ${response.status})`;
-      // For read bootstrap, fallback to cache if server is unreachable, but for write actions always throw error
       if (action === 'bootstrap') {
-        console.warn('Bootstrap API error, falling back to local cache:', errMsg);
+        console.warn('Bootstrap API error, using local cache:', errMsg);
         this.setIsOfflineMode(true);
         return this.localCall(action, payload);
       }
@@ -222,7 +271,7 @@ class GasClient {
     return data.data || data;
   }
 
-  // --- Local Simulated Storage Fallback ---
+  // --- Local Storage Sync & Simulation ---
   private localCall(action: string, payload: any): any {
     switch (action) {
       case 'bootstrap': {
@@ -231,12 +280,18 @@ class GasClient {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
         const storedCatalog = localStorage.getItem(STORAGE_KEY_CATALOG);
 
-        const settings: SupplierSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS;
-        const clients = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
+        let settings: SupplierSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS;
+        // Migration check: ensure firms exist
+        if (!settings.firms || settings.firms.length === 0) {
+          settings.firms = DEFAULT_FIRMS;
+          settings.ownerName = settings.ownerName || 'MIAN FARHAN ANWAR';
+          settings.activeFirmId = settings.activeFirmId || DEFAULT_FIRMS[0].id;
+        }
+
+        const clients: SavedClient[] = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
         const docs: DocumentRecord[] = storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC];
         const catalog = storedCatalog ? JSON.parse(storedCatalog) : SEED_CATALOG;
 
-        // Ensure defaults are saved if empty
         if (!storedSettings) localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
         if (!storedClients) localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
         if (!storedDocs) localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
@@ -261,26 +316,32 @@ class GasClient {
         const settings: SupplierSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS;
 
         const docToSave = payload.doc;
-        const isNew = !docToSave.docId;
-        const docId = docToSave.docId || 'doc-' + Date.now();
+        const isNew = !docToSave.docId && !docToSave.DocID;
+        const docId = docToSave.docId || docToSave.DocID || 'doc-' + Date.now();
 
-        let docNo = docToSave.docNo;
+        // Active firm identification
+        const activeFirm = (settings.firms || []).find((f) => f.id === docToSave.firmId) || settings.firms?.[0] || DEFAULT_FIRMS[0];
+
+        let docNo = docToSave.docNo || docToSave.DocNo;
         if (!docNo) {
           if (docToSave.type === 'BILL') {
-            docNo = settings.nextBillNo;
-            const next = String(Number(settings.nextBillNo || '100') + 1);
+            docNo = activeFirm.nextBillNo;
+            const next = String(Number(activeFirm.nextBillNo || '100') + 1);
+            activeFirm.nextBillNo = next;
             settings.nextBillNo = next;
           } else {
-            docNo = settings.nextQuoteNo;
-            const numPart = settings.nextQuoteNo.replace(/\D/g, '') || '200';
-            const prefix = settings.nextQuoteNo.replace(/\d/g, '') || 'Q-';
-            settings.nextQuoteNo = `${prefix}${Number(numPart) + 1}`;
+            docNo = activeFirm.nextQuoteNo;
+            const numPart = activeFirm.nextQuoteNo.replace(/\D/g, '') || '200';
+            const prefix = activeFirm.nextQuoteNo.replace(/\d/g, '') || 'Q-';
+            const next = `${prefix}${Number(numPart) + 1}`;
+            activeFirm.nextQuoteNo = next;
+            settings.nextQuoteNo = next;
           }
           localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
         }
 
-        // Calculate totals
-        const totals = calculateTotals(docToSave.items || [], settings.gstRate, settings.pstRate);
+        // Live calculation of totals
+        const totals = calculateTotals(docToSave.items || docToSave.Items || [], activeFirm.gstRate, activeFirm.pstRate);
 
         const fullRecord: DocumentRecord = {
           ...docToSave,
@@ -288,6 +349,8 @@ class GasClient {
           DocID: docId,
           docNo,
           DocNo: docNo,
+          firmId: activeFirm.id,
+          firmName: activeFirm.name,
           Type: docToSave.type,
           Date: docToSave.date,
           ClientName: docToSave.clientName,
@@ -322,26 +385,35 @@ class GasClient {
         }
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
 
-        // Update clients auto-save
+        // Auto-save Client
         if (docToSave.clientName) {
           const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-          const clients = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
-          const existing = clients.find((c: any) => c.name.toLowerCase() === docToSave.clientName.toLowerCase());
+          const clients: SavedClient[] = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
+          const existing = clients.find((c) => c.name.toLowerCase() === docToSave.clientName.toLowerCase());
           if (!existing) {
             clients.push({
+              id: 'client-' + Date.now(),
               name: docToSave.clientName,
               address: docToSave.clientAddress || '',
               ntn: docToSave.clientNTN || '',
+              totalOrders: 1,
+              totalBilled: totals.grandTotal,
             });
-            localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
+          } else {
+            existing.address = docToSave.clientAddress || existing.address;
+            existing.ntn = docToSave.clientNTN || existing.ntn;
+            existing.totalOrders = (existing.totalOrders || 0) + 1;
+            existing.totalBilled = (existing.totalBilled || 0) + totals.grandTotal;
           }
+          localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
         }
 
-        // Update catalog auto-save
-        if (docToSave.items && docToSave.items.length > 0) {
+        // Auto-save Catalog
+        const rowItems = docToSave.items || docToSave.Items || [];
+        if (rowItems.length > 0) {
           const storedCatalog = localStorage.getItem(STORAGE_KEY_CATALOG);
           const catalog = storedCatalog ? JSON.parse(storedCatalog) : SEED_CATALOG;
-          for (const item of docToSave.items) {
+          for (const item of rowItems) {
             if (item.description && !catalog.find((c: any) => c.description.toLowerCase() === item.description.toLowerCase())) {
               catalog.push({
                 description: item.description,
@@ -374,6 +446,28 @@ class GasClient {
         return { ok: true };
       }
 
+      case 'saveClient': {
+        const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
+        const clients: SavedClient[] = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
+        const newClient = payload.client;
+        const idx = clients.findIndex((c) => c.id === newClient.id || c.name.toLowerCase() === newClient.name.toLowerCase());
+        if (idx >= 0) {
+          clients[idx] = { ...clients[idx], ...newClient };
+        } else {
+          clients.unshift({ ...newClient, id: newClient.id || 'client-' + Date.now() });
+        }
+        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
+        return { ok: true, client: newClient };
+      }
+
+      case 'deleteClient': {
+        const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
+        const clients: SavedClient[] = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
+        const filtered = clients.filter((c) => c.id !== payload.clientId && c.name !== payload.clientName);
+        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(filtered));
+        return { ok: true };
+      }
+
       default:
         throw new Error(`Unknown action: ${action}`);
     }
@@ -392,8 +486,8 @@ class GasClient {
   }
 
   async saveDoc(doc: any): Promise<{ ok: boolean; docId: string; docNo: string }> {
-    // Normalize line items for complete compatibility with Code.gs
-    const normalizedItems = (doc.items || []).map((it: any, idx: number) => {
+    const items = doc.items || doc.Items || [];
+    const normalizedItems = items.map((it: any, idx: number) => {
       const q = Number(it.qty ?? it.Qty ?? 1);
       const r = Number(it.rate ?? it.Rate ?? 0);
       const a = Number(it.amount ?? it.Amount ?? Math.round(q * r * 100) / 100);
@@ -415,10 +509,15 @@ class GasClient {
       };
     });
 
+    // Ensure live totals are calculated and attached
+    const totals = calculateTotals(normalizedItems, doc.gstRate || 0.18, doc.pstRate || 0.16);
+
     const normalizedDoc = {
       ...doc,
       docId: doc.docId || doc.DocID || '',
       DocID: doc.docId || doc.DocID || '',
+      firmId: doc.firmId || '',
+      firmName: doc.firmName || '',
       type: doc.type || doc.Type || 'BILL',
       Type: doc.type || doc.Type || 'BILL',
       docNo: doc.docNo || doc.DocNo || '',
@@ -437,6 +536,18 @@ class GasClient {
       RefText: doc.refText || doc.RefText || '',
       requestId: doc.requestId || doc.RequestId || '',
       RequestId: doc.requestId || doc.RequestId || '',
+      goodsSub: totals.goodsSub,
+      GoodsSub: totals.goodsSub,
+      gst: totals.gst,
+      GST: totals.gst,
+      serviceSub: totals.serviceSub,
+      ServiceSub: totals.serviceSub,
+      pst: totals.pst,
+      PST: totals.pst,
+      otherSub: totals.otherSub,
+      OtherSub: totals.otherSub,
+      grandTotal: totals.grandTotal,
+      GrandTotal: totals.grandTotal,
       items: normalizedItems,
       Items: normalizedItems,
     };
@@ -455,7 +566,14 @@ class GasClient {
     return res;
   }
 
-  // Diagnostic tool to check backend connection status
+  async saveClient(client: SavedClient): Promise<{ ok: boolean }> {
+    return this.localCall('saveClient', { client });
+  }
+
+  async deleteClient(clientId: string, clientName?: string): Promise<{ ok: boolean }> {
+    return this.localCall('deleteClient', { clientId, clientName });
+  }
+
   async checkBackendStatus(): Promise<{
     ok: boolean;
     gasConfigured: boolean;
@@ -480,7 +598,7 @@ class GasClient {
           gasConfigured: false,
           gasApiKeyConfigured: false,
           appPinConfigured: false,
-          message: 'PIN rejected by server. Check that your device PIN matches APP_PIN.',
+          message: 'PIN rejected by server. Check that your device PIN matches APP_PIN in Vercel.',
         };
       }
 
@@ -493,11 +611,10 @@ class GasClient {
           gasConfigured: false,
           gasApiKeyConfigured: !!config.gasApiKeyConfigured,
           appPinConfigured: !!config.appPinConfigured,
-          message: 'GAS_URL is missing in Vercel Environment Variables. Add GAS_URL in Vercel Project Settings.',
+          message: 'GAS_URL is missing in Vercel Environment Variables. Add GAS_URL in Vercel Settings > Environment Variables.',
         };
       }
 
-      // If gasUrl is configured, attempt bootstrap to test live sheet connectivity
       try {
         const testRes = await this.callGas('bootstrap', {});
         if (testRes) {
@@ -515,7 +632,7 @@ class GasClient {
           gasConfigured: true,
           gasApiKeyConfigured: !!config.gasApiKeyConfigured,
           appPinConfigured: !!config.appPinConfigured,
-          message: `Google Apps Script error: ${err.message}`,
+          message: `Google Apps Script returned an error: ${err.message}`,
         };
       }
 
@@ -537,11 +654,9 @@ class GasClient {
     }
   }
 
-  // Verify PIN against backend
   async verifyPin(pin: string): Promise<boolean> {
     try {
       this.setPin(pin);
-      // Attempt bootstrap to verify PIN
       await this.bootstrap();
       return true;
     } catch (err: any) {
@@ -549,7 +664,6 @@ class GasClient {
         this.clearPin();
         return false;
       }
-      // If it's a network error or offline mode, accept PIN if non-empty
       if (pin && pin.length >= 4) {
         return true;
       }

@@ -51,12 +51,40 @@ export const EntryFormScreen: React.FC<Props> = ({
   // Generate or reuse requestId for idempotency
   const requestIdRef = useRef<string>(initialDoc?.requestId || generateUUID());
 
+  // Firm Selection (Multi-firm for MIAN FARHAN ANWAR)
+  const firms = settings.firms && settings.firms.length > 0 ? settings.firms : [
+    {
+      id: 'firm-anwar-traders',
+      name: settings.supplierName || 'Anwar Traders',
+      tagline: settings.supplierTagline || 'General Order Suppliers & Govt Contractors',
+      address: settings.supplierAddress,
+      phone: settings.supplierPhone,
+      ntn: settings.supplierNTN,
+      gst: settings.supplierGST,
+      vendorNo: settings.vendorNo,
+      gstRate: settings.gstRate || 0.18,
+      pstRate: settings.pstRate || 0.16,
+      letterheadTop: settings.letterheadTop || 2.5,
+      letterheadBottom: settings.letterheadBottom || 1.5,
+      nextBillNo: settings.nextBillNo || '101',
+      nextQuoteNo: settings.nextQuoteNo || 'Q-201',
+    }
+  ];
+
+  const [selectedFirmId, setSelectedFirmId] = useState<string>(() => {
+    return initialDoc?.firmId || settings.activeFirmId || firms[0].id;
+  });
+
+  const activeFirm = useMemo(() => {
+    return firms.find((f) => f.id === selectedFirmId) || firms[0];
+  }, [firms, selectedFirmId]);
+
   // Form states
   const [docNo, setDocNo] = useState<string>(() => {
     if (initialDoc?.docNo || initialDoc?.DocNo) {
       return initialDoc.docNo || initialDoc.DocNo || '';
     }
-    return docType === 'BILL' ? settings.nextBillNo || '101' : settings.nextQuoteNo || 'Q-201';
+    return docType === 'BILL' ? activeFirm.nextBillNo || '101' : activeFirm.nextQuoteNo || 'Q-201';
   });
 
   const [date, setDate] = useState<string>(() => {
@@ -82,6 +110,8 @@ export const EntryFormScreen: React.FC<Props> = ({
   const [refText, setRefText] = useState<string>(() => {
     return initialDoc?.refText || initialDoc?.RefText || '';
   });
+
+  const [formError, setFormError] = useState<string>('');
 
   // Client suggestions dropdown state
   const [showClientDropdown, setShowClientDropdown] = useState(false);
@@ -124,13 +154,13 @@ export const EntryFormScreen: React.FC<Props> = ({
   // Catalog auto-suggest dropdown state per row
   const [activeCatalogRowIndex, setActiveCatalogRowIndex] = useState<number | null>(null);
 
-  // Live Totals calculation
+  // Live Totals calculation using selected firm's tax rates
   const totals = useMemo(() => {
-    return calculateTotals(items, settings.gstRate, settings.pstRate);
-  }, [items, settings.gstRate, settings.pstRate]);
+    return calculateTotals(items, activeFirm.gstRate || 0.18, activeFirm.pstRate || 0.16);
+  }, [items, activeFirm.gstRate, activeFirm.pstRate]);
 
-  const gstPercent = Math.round((settings.gstRate || 0.18) * 100);
-  const pstPercent = Math.round((settings.pstRate || 0.16) * 100);
+  const gstPercent = Math.round((activeFirm.gstRate || 0.18) * 100);
+  const pstPercent = Math.round((activeFirm.pstRate || 0.16) * 100);
 
   // Handlers for Items
   const handleItemChange = (
@@ -150,6 +180,7 @@ export const EntryFormScreen: React.FC<Props> = ({
       updated[index] = item;
       return updated;
     });
+    setFormError('');
   };
 
   const addItemRow = () => {
@@ -214,12 +245,13 @@ export const EntryFormScreen: React.FC<Props> = ({
     setClientAddress(client.address || '');
     setClientNTN(client.ntn || '');
     setShowClientDropdown(false);
+    setFormError('');
   };
 
-  // Submit Handler
+  // Submit Handler with 100% calculation safety
   const handleSubmit = async (previewAfter: boolean) => {
     if (!clientName.trim()) {
-      alert('Client Name is required.');
+      setFormError('Client Name is required. Please type or select a client.');
       return;
     }
 
@@ -227,30 +259,69 @@ export const EntryFormScreen: React.FC<Props> = ({
       (i) => i.description.trim() && Number(i.qty) > 0
     );
     if (validItems.length === 0) {
-      alert('Please add at least one line item with description and quantity.');
+      setFormError('Please add at least one line item with a description and quantity greater than 0.');
       return;
     }
 
+    // Explicit calculation of totals ensures preview & print ALWAYS has non-zero values
+    const liveTotals = calculateTotals(validItems, activeFirm.gstRate || 0.18, activeFirm.pstRate || 0.16);
+
     const docPayload: any = {
       docId: initialDoc?.docId || initialDoc?.DocID,
+      DocID: initialDoc?.docId || initialDoc?.DocID,
+      firmId: activeFirm.id,
+      firmName: activeFirm.name,
       type: docType,
+      Type: docType,
       docNo: docNo.trim(),
+      DocNo: docNo.trim(),
       date,
+      Date: date,
       validUntil: docType === 'QUOTATION' ? validUntil : undefined,
+      ValidUntil: docType === 'QUOTATION' ? validUntil : undefined,
       clientName: clientName.trim(),
+      ClientName: clientName.trim(),
       clientAddress: clientAddress.trim(),
+      ClientAddress: clientAddress.trim(),
       clientNTN: clientNTN.trim(),
+      ClientNTN: clientNTN.trim(),
       refText: refText.trim(),
+      RefText: refText.trim(),
       requestId: requestIdRef.current,
-      items: validItems.map((it, idx) => ({
-        sr: idx + 1,
-        description: it.description.trim(),
-        unit: it.unit || 'Nos',
-        qty: Number(it.qty) || 0,
-        rate: Number(it.rate) || 0,
-        tax: it.tax,
-        amount: Math.round((Number(it.qty) || 0) * (Number(it.rate) || 0) * 100) / 100,
-      })),
+      RequestId: requestIdRef.current,
+      goodsSub: liveTotals.goodsSub,
+      GoodsSub: liveTotals.goodsSub,
+      gst: liveTotals.gst,
+      GST: liveTotals.gst,
+      serviceSub: liveTotals.serviceSub,
+      ServiceSub: liveTotals.serviceSub,
+      pst: liveTotals.pst,
+      PST: liveTotals.pst,
+      otherSub: liveTotals.otherSub,
+      OtherSub: liveTotals.otherSub,
+      grandTotal: liveTotals.grandTotal,
+      GrandTotal: liveTotals.grandTotal,
+      items: validItems.map((it, idx) => {
+        const q = Number(it.qty) || 0;
+        const r = Number(it.rate) || 0;
+        const a = Math.round(q * r * 100) / 100;
+        return {
+          sr: idx + 1,
+          Sr: idx + 1,
+          description: it.description.trim(),
+          Description: it.description.trim(),
+          unit: it.unit || 'Nos',
+          Unit: it.unit || 'Nos',
+          qty: q,
+          Qty: q,
+          rate: r,
+          Rate: r,
+          tax: it.tax,
+          Tax: it.tax,
+          amount: a,
+          Amount: a,
+        };
+      }),
     };
 
     await onSave(docPayload, previewAfter);
@@ -318,8 +389,54 @@ export const EntryFormScreen: React.FC<Props> = ({
 
       {/* Form Container */}
       <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 w-full flex-1">
+        {/* Error message banner */}
+        {formError && (
+          <div className="mb-4 p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold flex items-center justify-between">
+            <span>{formError}</span>
+            <button
+              type="button"
+              onClick={() => setFormError('')}
+              className="text-rose-500 hover:text-rose-800 font-black px-1.5"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* Document Header Fields Card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 sm:p-6 mb-4">
+          {/* Supplier Firm Switcher */}
+          <div className="mb-4 pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider block">
+                Billing Firm / Enterprise Entity
+              </span>
+              <span className="text-xs text-slate-500">
+                Owner: <strong>{settings.ownerName || 'MIAN FARHAN ANWAR'}</strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Building className="w-4 h-4 text-[#1F3A5F]" />
+              <select
+                value={selectedFirmId}
+                onChange={(e) => {
+                  setSelectedFirmId(e.target.value);
+                  const selected = firms.find((f) => f.id === e.target.value);
+                  if (selected && (!initialDoc?.docNo && !initialDoc?.DocNo)) {
+                    setDocNo(docType === 'BILL' ? selected.nextBillNo : selected.nextQuoteNo);
+                  }
+                }}
+                className="px-3 py-1.5 text-xs font-bold bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1F3A5F] focus:outline-none text-slate-800 cursor-pointer"
+              >
+                {firms.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.ntn ? `NTN: ${f.ntn}` : 'Govt Contractor'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             {/* Doc Number */}
             <div>

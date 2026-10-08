@@ -4,17 +4,43 @@ export type TaxType = 'GST' | 'PST' | 'None';
 export interface LineItem {
   id?: string;
   sr?: number;
+  Sr?: number;
   description: string;
+  Description?: string;
   unit: string;
+  Unit?: string;
   qty: number;
+  Qty?: number;
   rate: number;
+  Rate?: number;
   tax: TaxType;
+  Tax?: TaxType;
   amount?: number;
+  Amount?: number;
+}
+
+export interface FirmProfile {
+  id: string;
+  name: string; // e.g. "Anwar Traders", "Hashir Traders"
+  tagline: string;
+  address: string;
+  phone: string;
+  ntn: string;
+  gst: string;
+  vendorNo: string;
+  gstRate: number; // default 0.18
+  pstRate: number; // default 0.16
+  letterheadTop: number; // default 2.5
+  letterheadBottom: number; // default 1.5
+  nextBillNo: string; // e.g. "101"
+  nextQuoteNo: string; // e.g. "Q-201"
 }
 
 export interface DocumentRecord {
   docId?: string;
   DocID?: string;
+  firmId?: string;
+  firmName?: string;
   type: DocType;
   Type?: DocType;
   docNo?: string;
@@ -32,7 +58,9 @@ export interface DocumentRecord {
   refText: string;
   RefText?: string;
   requestId?: string;
+  RequestId?: string;
   items?: LineItem[];
+  Items?: LineItem[];
   // Calculated summaries
   goodsSub?: number;
   GoodsSub?: number;
@@ -51,6 +79,10 @@ export interface DocumentRecord {
 }
 
 export interface SupplierSettings {
+  ownerName: string; // "MIAN FARHAN ANWAR"
+  activeFirmId: string;
+  firms: FirmProfile[];
+  // Legacy / fallback fields mapped to active firm:
   supplierName: string;
   supplierTagline: string;
   supplierAddress: string;
@@ -58,18 +90,23 @@ export interface SupplierSettings {
   supplierNTN: string;
   supplierGST: string;
   vendorNo: string;
-  gstRate: number; // e.g. 0.18
-  pstRate: number; // e.g. 0.16
-  letterheadTop: number; // in inches e.g. 2.5
-  letterheadBottom: number; // in inches e.g. 1.5
-  nextBillNo: string; // e.g. "101"
-  nextQuoteNo: string; // e.g. "Q-201"
+  gstRate: number;
+  pstRate: number;
+  letterheadTop: number;
+  letterheadBottom: number;
+  nextBillNo: string;
+  nextQuoteNo: string;
 }
 
 export interface SavedClient {
+  id?: string;
   name: string;
   address: string;
   ntn: string;
+  phone?: string;
+  contactPerson?: string;
+  totalOrders?: number;
+  totalBilled?: number;
 }
 
 export interface CatalogItem {
