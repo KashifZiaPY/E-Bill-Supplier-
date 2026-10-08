@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@layer base {
+  @media print {
+    body {
+      font-family: Arial, Helvetica, sans-serif !important;
+      color: #000 !important;
+      background: #fff !important;
+    }
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  table {
+    border-collapse: collapse !important;
+  }
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .bill-sheet,
+  .gst-invoice-sheet,
+  .quotation-sheet {
+    font-family: Arial, Helvetica, sans-serif !important;
+    color: #000 !important;
+  }
+}

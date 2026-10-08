@@ -1,0 +1,6 @@
+{
+  "name": "Anwar Traders Supplier Billing",
+  "description": "Mobile-friendly supplier billing, GST sales tax invoicing, and quotation generator for Anwar Traders with pre-printed letterhead support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
