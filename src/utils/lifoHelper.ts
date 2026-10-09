@@ -43,16 +43,20 @@ export function isLastDocLIFO(
     return true;
   }
 
-  // Fallback: match by document number, type AND firm
-  const targetNo = String(doc.docNo || doc.DocNo || '').trim();
-  const candidateNo = String(lastCandidate.docNo || lastCandidate.DocNo || '').trim();
-  if (targetNo && candidateNo && targetNo === candidateNo) {
-    const candidateType = String(lastCandidate.type || lastCandidate.Type || 'BILL').toUpperCase();
-    if (docType === candidateType) {
-      const docFirm = String(doc.firmId || '').trim();
-      const candFirm = String(lastCandidate.firmId || '').trim();
-      if (!docFirm || !candFirm || docFirm === candFirm) {
-        return true;
+  // Fallback: match by document number ONLY for legacy records that carry no
+  // document ID at all. Bill numbers can repeat across history, so number
+  // matching on ID'd records would wrongly badge several documents "latest".
+  if (!targetId) {
+    const targetNo = String(doc.docNo || doc.DocNo || '').trim();
+    const candidateNo = String(lastCandidate.docNo || lastCandidate.DocNo || '').trim();
+    if (targetNo && candidateNo && targetNo === candidateNo) {
+      const candidateType = String(lastCandidate.type || lastCandidate.Type || 'BILL').toUpperCase();
+      if (docType === candidateType) {
+        const docFirm = String(doc.firmId || '').trim();
+        const candFirm = String(lastCandidate.firmId || '').trim();
+        if (!docFirm || !candFirm || docFirm === candFirm) {
+          return true;
+        }
       }
     }
   }

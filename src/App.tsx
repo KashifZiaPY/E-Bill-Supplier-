@@ -109,13 +109,24 @@ export default function App() {
   // Current active firm helper
   const currentFirm = useMemo(() => {
     const list = settings.firms || [];
-    return list.find((f) => f.id === activeFirmId) || list[0] || {
+    const found = list.find((f) => f.id === activeFirmId) || list[0] || {
       id: 'firm-anwar-traders',
       name: 'Anwar Traders',
       nextBillNo: '101',
       nextQuoteNo: 'Q-201',
     };
-  }, [settings.firms, activeFirmId]);
+    // The backend keeps the authoritative running counters at the top level of
+    // settings for the ACTIVE firm (see updateSequenceCounter in Code.gs).
+    // Prefer them so a new bill/quote never prefills a stale, duplicated number.
+    if (found && found.id === (settings.activeFirmId || list[0]?.id)) {
+      return {
+        ...found,
+        nextBillNo: settings.nextBillNo || (found as any).nextBillNo || '101',
+        nextQuoteNo: settings.nextQuoteNo || (found as any).nextQuoteNo || 'Q-201',
+      };
+    }
+    return found;
+  }, [settings.firms, settings.activeFirmId, settings.nextBillNo, settings.nextQuoteNo, activeFirmId]);
 
   // Handle PIN verification
   const handlePinSubmit = async (pin: string) => {
@@ -305,18 +316,13 @@ export default function App() {
     const docNo = String(doc.docNo || doc.DocNo || '').trim();
     const firmId = doc.firmId || currentFirm.id;
 
-    // 1. Immediately and synchronously remove from local React state so it vanishes from the UI instantaneously
+    // 1. Immediately and synchronously remove from local React state so it vanishes from the UI instantaneously.
+    // Remove ONLY the exact document by ID. Never match by document number alone:
+    // numbers can repeat across history and must not cause collateral removal.
     setDocs((prevDocs) =>
       prevDocs.filter((d) => {
         const dId = String(d.docId || d.DocID || '').trim();
-        const dNo = String(d.docNo || d.DocNo || '').trim();
-        const dType = String(d.type || d.Type || 'BILL').toUpperCase();
-        const dFirm = String(d.firmId || '').trim();
-
-        if (docId && dId && dId === docId) return false;
-        if (docNo && dNo && dNo === docNo && dType === docType) {
-          if (!firmId || !dFirm || firmId === dFirm) return false;
-        }
+        if (docId && dId) return dId !== docId;
         return true;
       })
     );
@@ -325,10 +331,7 @@ export default function App() {
     setActiveDoc((prev) => {
       if (!prev) return null;
       const prevId = String(prev.docId || prev.DocID || '').trim();
-      const prevNo = String(prev.docNo || prev.DocNo || '').trim();
-      const prevType = String(prev.type || prev.Type || 'BILL').toUpperCase();
       if (docId && prevId && prevId === docId) return null;
-      if (docNo && prevNo && prevNo === docNo && prevType === docType) return null;
       return prev;
     });
 

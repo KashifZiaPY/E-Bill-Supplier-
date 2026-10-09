@@ -78,8 +78,19 @@ export const EntryFormScreen: React.FC<Props> = ({
   });
 
   const activeFirm = useMemo(() => {
-    return firms.find((f) => f.id === selectedFirmId) || firms[0];
-  }, [firms, selectedFirmId]);
+    const f = firms.find((f) => f.id === selectedFirmId) || firms[0];
+    // Prefer the authoritative top-level counters for the active firm (the backend
+    // keeps these current via updateSequenceCounter), so the form never prefills
+    // a stale, duplicated number.
+    if (f && f.id === settings.activeFirmId) {
+      return {
+        ...f,
+        nextBillNo: settings.nextBillNo || (f as any).nextBillNo || '101',
+        nextQuoteNo: settings.nextQuoteNo || (f as any).nextQuoteNo || 'Q-201',
+      };
+    }
+    return f;
+  }, [firms, selectedFirmId, settings.activeFirmId, settings.nextBillNo, settings.nextQuoteNo]);
 
   // Form states
   const [docNo, setDocNo] = useState<string>(() => {

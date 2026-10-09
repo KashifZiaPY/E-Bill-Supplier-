@@ -9,7 +9,7 @@ const STORAGE_KEY_CLIENTS = 'anwar_traders_clients_v2';
 const STORAGE_KEY_DOCS = 'anwar_traders_docs_v2';
 const STORAGE_KEY_CATALOG = 'anwar_traders_catalog_v2';
 const STORAGE_KEY_OFFLINE_MODE = 'anwar_traders_offline_mode';
-const STORAGE_KEY_DELETED_DOCS = 'anwar_traders_deleted_docs_v2';
+const STORAGE_KEY_DELETED_DOCS = 'anwar_traders_deleted_docs_v3';
 const STORAGE_KEY_GAS_URL = 'anwar_traders_gas_url_v2';
 const STORAGE_KEY_GAS_API_KEY = 'anwar_traders_gas_api_key_v2';
 
@@ -61,14 +61,11 @@ export function getDeletedDocKeys(): Set<string> {
 export function recordDeletedDocKey(docId?: string, docNo?: string, docType?: string, firmId?: string) {
   try {
     const current = getDeletedDocKeys();
+    // Tombstone ONLY the exact document ID. Never record bare "TYPE-NO" keys:
+    // bill numbers can repeat across history, and a number-based tombstone
+    // would permanently hide innocent documents sharing that number.
     if (docId && String(docId).trim()) {
       current.add(String(docId).trim());
-    }
-    if (docNo && docType) {
-      current.add(`${String(docType).toUpperCase()}-${String(docNo).trim()}`);
-    }
-    if (docNo && docType && firmId) {
-      current.add(`${String(firmId).trim()}-${String(docType).toUpperCase()}-${String(docNo).trim()}`);
     }
     localStorage.setItem(STORAGE_KEY_DELETED_DOCS, JSON.stringify(Array.from(current)));
   } catch (e) {
@@ -81,15 +78,10 @@ export function isDocDeleted(d: any): boolean {
   const deletedKeys = getDeletedDocKeys();
   if (deletedKeys.size === 0) return false;
 
+  // Match ONLY by exact document ID. Number-based matching is unsafe because
+  // bill numbers may repeat across history.
   const id = String(d.docId || d.DocID || '').trim();
   if (id && deletedKeys.has(id)) return true;
-
-  const no = String(d.docNo || d.DocNo || '').trim();
-  const type = String(d.type || d.Type || 'BILL').toUpperCase();
-  if (no && type && deletedKeys.has(`${type}-${no}`)) return true;
-
-  const firm = String(d.firmId || '').trim();
-  if (no && type && firm && deletedKeys.has(`${firm}-${type}-${no}`)) return true;
 
   return false;
 }
@@ -911,12 +903,11 @@ class GasClient {
         // Record persistent tombstone so this document is permanently purged
         recordDeletedDocKey(targetId, targetNo, docType, firmId);
 
+        // Remove ONLY the exact document by ID. Never filter by document number:
+        // numbers can repeat across history and must not cause collateral removal.
         const filtered = docs.filter((d) => {
           const dId = String(d.docId || d.DocID || '').trim();
-          const dNo = String(d.docNo || d.DocNo || '').trim();
-          const dType = String(d.type || d.Type || 'BILL').toUpperCase();
-          if (targetId && dId && dId === targetId) return false;
-          if (targetNo && dNo && targetNo === dNo && docType === dType) return false;
+          if (targetId && dId) return dId !== targetId;
           return true;
         });
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(filtered));
@@ -1099,7 +1090,9 @@ class GasClient {
 
     let backendResult: any;
     try {
-      backendResult = await this.callGas('saveDoc', { doc: normalizedDoc });
+      // Backend contract (Code.gs handleSaveDoc) reads payload.docData.
+      // Sending any other key silently produces a blank record, so keep this exact.
+      backendResult = await this.callGas('saveDoc', { docData: normalizedDoc });
     } catch (err) {
       console.warn('Backend saveDoc call failed or offline, saving locally:', err);
       return this.localCall('saveDoc', { doc: normalizedDoc });
