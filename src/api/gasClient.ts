@@ -1,7 +1,8 @@
 // Client for communicating with the serverless /api/gas proxy or local simulated storage
 
-import type { BootstrapData, DocumentRecord, FirmProfile, LineItem, SavedClient, SupplierSettings } from '../types/billing';
+import type { BootstrapData, DocumentRecord, FirmProfile, LineItem, SavedClient, SupplierSettings, DocType } from '../types/billing';
 import { calculateTotals, safeNormalizeItems } from '../utils/formatters';
+import { calculateRolledBackNextDocNo } from '../utils/lifoHelper';
 
 const STORAGE_KEY_SETTINGS = 'anwar_traders_settings_v2';
 const STORAGE_KEY_CLIENTS = 'anwar_traders_clients_v2';
@@ -146,14 +147,14 @@ export const SEED_PETTY_DOC: DocumentRecord = {
 };
 
 export const SEED_CATALOG = [
-  { description: 'Toyota Corolla Brake Pad Set (Front & Rear Genuine)', unit: 'Set', rate: 14500, tax: 'GST' as const },
-  { description: 'Engine Oil Filter & Air Filter Element', unit: 'Nos', rate: 3200, tax: 'GST' as const },
-  { description: 'Dry Charged Heavy Duty Battery 12V 65AH', unit: 'Nos', rate: 22750, tax: 'GST' as const },
-  { description: 'Engine Synthetic Lubricant 5W-30 (4 Litres Pack)', unit: 'Pack', rate: 11200, tax: 'GST' as const },
-  { description: 'Complete Brake System Overhauling & Servicing Labor', unit: 'Job', rate: 4500, tax: 'PST' as const },
-  { description: 'Suspension Bushing Replacement & Tuning Labor', unit: 'Job', rate: 11344.22, tax: 'PST' as const },
-  { description: 'AC Compressor Gas Recharge & Leakage Test', unit: 'Job', rate: 6500, tax: 'PST' as const },
-  { description: 'Computerized Engine Diagnostics & Tuning', unit: 'Job', rate: 3500, tax: 'PST' as const },
+  { description: 'Official Vehicles Maintenance & Repair Services', unit: 'Job', rate: 14500, tax: 'PST' as const },
+  { description: 'General Order Supplies & Consumables', unit: 'Set', rate: 8500, tax: 'GST' as const },
+  { description: 'Electrical & Hardware Materials Supply', unit: 'Nos', rate: 4200, tax: 'GST' as const },
+  { description: 'Computer & IT Hardware Peripherals Supply', unit: 'Nos', rate: 18500, tax: 'GST' as const },
+  { description: 'Technical Maintenance & Overhauling Services', unit: 'Job', rate: 9500, tax: 'PST' as const },
+  { description: 'Office Equipment Repair & Maintenance Services', unit: 'Job', rate: 6500, tax: 'PST' as const },
+  { description: 'Stationery & Printing Consumables', unit: 'Pack', rate: 3200, tax: 'GST' as const },
+  { description: 'Facility Maintenance & Technical Support', unit: 'Job', rate: 12000, tax: 'PST' as const },
 ];
 
 export const SEED_CLIENTS: SavedClient[] = [
@@ -164,8 +165,6 @@ export const SEED_CLIENTS: SavedClient[] = [
     ntn: '9010203-4',
     phone: '042-99201139',
     contactPerson: 'Director Admin & Procurement',
-    totalOrders: 14,
-    totalBilled: 1245000,
   },
   {
     id: 'client-2',
@@ -174,8 +173,6 @@ export const SEED_CLIENTS: SavedClient[] = [
     ntn: '9020304-5',
     phone: '042-99211244',
     contactPerson: 'Section Officer (General)',
-    totalOrders: 8,
-    totalBilled: 890000,
   },
   {
     id: 'client-3',
@@ -184,8 +181,6 @@ export const SEED_CLIENTS: SavedClient[] = [
     ntn: '9030405-6',
     phone: '051-9290044',
     contactPerson: 'Chief Executive Officer DHA',
-    totalOrders: 5,
-    totalBilled: 420000,
   },
 ];
 
@@ -589,7 +584,13 @@ class GasClient {
           localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
         }
 
-        const totals = calculateTotals(docToSave.items || docToSave.Items || [], activeFirm.gstRate, activeFirm.pstRate);
+        const gstRateToUse = (docToSave.gstRate !== undefined && docToSave.gstRate !== null && !isNaN(Number(docToSave.gstRate)))
+          ? Number(docToSave.gstRate)
+          : ((docToSave as any).GstRate !== undefined && !isNaN(Number((docToSave as any).GstRate)))
+          ? Number((docToSave as any).GstRate)
+          : (activeFirm.gstRate || 0.18);
+
+        const totals = calculateTotals(docToSave.items || docToSave.Items || [], gstRateToUse, 0.16);
 
         const fullRecord: DocumentRecord = {
           ...docToSave,
@@ -609,6 +610,10 @@ class GasClient {
           goodsSub: totals.goodsSub,
           GST: totals.gst,
           gst: totals.gst,
+          gstRate: gstRateToUse,
+          GstRate: gstRateToUse,
+          gstBreakdown: totals.gstBreakdown,
+          GstBreakdown: totals.gstBreakdown,
           ServiceSub: totals.serviceSub,
           serviceSub: totals.serviceSub,
           PST: totals.pst,
@@ -732,6 +737,44 @@ class GasClient {
         return { ok: true };
       }
 
+      case 'deleteDoc': {
+        const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
+        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
+        const targetId = String(payload.docId || '');
+        const targetDoc = docs.find((d) => String(d.docId || d.DocID || '') === targetId);
+
+        const filtered = docs.filter((d) => String(d.docId || d.DocID || '') !== targetId);
+        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(filtered));
+
+        // Automatic LIFO Sequence rollback: Revert nextBillNo or nextQuoteNo if applicable
+        const docType = ((payload.docType || targetDoc?.type || targetDoc?.Type || 'BILL') as string).toUpperCase() as DocType;
+        const firmId = payload.firmId || targetDoc?.firmId;
+
+        const storedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
+        if (storedSettings) {
+          try {
+            const settings: SupplierSettings = JSON.parse(storedSettings);
+            const activeFirm = (settings.firms || []).find((f) => f.id === firmId) || settings.firms?.[0];
+            if (activeFirm) {
+              const currentNext = docType === 'BILL' ? (activeFirm.nextBillNo || '101') : (activeFirm.nextQuoteNo || 'Q-201');
+              const rolledBack = calculateRolledBackNextDocNo(filtered, docType, activeFirm.id, currentNext);
+              if (docType === 'BILL') {
+                activeFirm.nextBillNo = rolledBack;
+                if (settings.activeFirmId === activeFirm.id) settings.nextBillNo = rolledBack;
+              } else {
+                activeFirm.nextQuoteNo = rolledBack;
+                if (settings.activeFirmId === activeFirm.id) settings.nextQuoteNo = rolledBack;
+              }
+              localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+            }
+          } catch (e) {
+            console.error('Error rolling back sequence counter on deleteDoc:', e);
+          }
+        }
+
+        return { ok: true, deletedDocId: targetId };
+      }
+
       default:
         throw new Error(`Unknown action: ${action}`);
     }
@@ -798,6 +841,7 @@ class GasClient {
       const desc = String(it.description || it.Description || '');
       const unit = String(it.unit || it.Unit || 'Nos');
       const tax = it.tax || it.Tax || 'GST';
+      const itemGst = it.gstRate ?? it.GstRate ?? it.taxRate ?? it.TaxRate;
       return {
         sr: it.sr || it.Sr || idx + 1,
         Sr: it.sr || it.Sr || idx + 1,
@@ -811,13 +855,22 @@ class GasClient {
         Rate: r,
         tax: tax,
         Tax: tax,
+        gstRate: itemGst,
+        GstRate: itemGst,
+        taxRate: itemGst,
+        TaxRate: itemGst,
         amount: a,
         Amount: a,
       };
     });
 
     // Ensure live totals are calculated and attached
-    const totals = calculateTotals(normalizedItems, doc.gstRate || 0.18, doc.pstRate || 0.16);
+    const docGstRate = (doc.gstRate !== undefined && doc.gstRate !== null && !isNaN(Number(doc.gstRate)))
+      ? Number(doc.gstRate)
+      : ((doc as any).GstRate !== undefined && !isNaN(Number((doc as any).GstRate)))
+      ? Number((doc as any).GstRate)
+      : 0.18;
+    const totals = calculateTotals(normalizedItems, docGstRate, 0.16);
 
     const clientNameStr = String(doc.clientName || doc.ClientName || '').trim();
     const clientAddressStr = String(doc.clientAddress || doc.ClientAddress || '').trim();
@@ -919,6 +972,32 @@ class GasClient {
       // ignore
     }
     return this.localCall('deleteClient', { clientId, clientName });
+  }
+
+  /**
+   * Permanently deletes a document (LIFO rule) and rolls back sequence number.
+   */
+  async deleteDoc(
+    docId: string,
+    docType?: string,
+    docNo?: string,
+    firmId?: string
+  ): Promise<{ ok: boolean }> {
+    try {
+      await this.callGas('deleteDoc', { docId, docType, docNo, firmId });
+    } catch {
+      // offline or unsupported in backend GAS
+    }
+    return this.localCall('deleteDoc', { docId, docType, docNo, firmId });
+  }
+
+  /**
+   * Updates or saves user PIN locally
+   */
+  updatePin(newPin: string): boolean {
+    if (!newPin || newPin.length < 4) return false;
+    this.setPin(newPin);
+    return true;
   }
 
   async checkBackendStatus(): Promise<{

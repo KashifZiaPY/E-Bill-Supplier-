@@ -44,10 +44,10 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
   const displayedError = errorMessage || localError;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-slate-200 p-6 md:p-8 flex flex-col items-center">
+    <div className="min-h-screen bg-gradient-to-br from-[#0B1E36] via-[#103158] to-[#0B1E36] flex flex-col justify-center items-center p-4">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-blue-900/30 p-6 md:p-8 flex flex-col items-center">
         {/* Header Icon */}
-        <div className="w-16 h-16 rounded-2xl bg-[#0F2544]/10 flex items-center justify-center text-[#0F2544] mb-3">
+        <div className="w-16 h-16 rounded-2xl bg-[#0B1E36] text-amber-300 shadow-md flex items-center justify-center mb-3">
           <ShieldCheck className="w-9 h-9" />
         </div>
 
@@ -57,7 +57,7 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center mt-0.5">
           Enterprise Billing &amp; Invoicing Portal
         </p>
-        <span className="text-[10px] font-semibold text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded-full mt-1.5 border border-blue-200">
+        <span className="text-[10px] font-semibold text-blue-900 bg-blue-50 px-2.5 py-0.5 rounded-full mt-1.5 border border-blue-200">
           Anwar Traders · Hashir Traders
         </span>
 

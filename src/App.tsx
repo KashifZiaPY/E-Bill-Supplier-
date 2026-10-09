@@ -299,6 +299,22 @@ export default function App() {
     }
   };
 
+  const handleDeleteDoc = async (doc: DocumentRecord) => {
+    const docId = String(doc.docId || doc.DocID || '');
+    const docType = String(doc.type || doc.Type || 'BILL').toUpperCase();
+    const docNo = String(doc.docNo || doc.DocNo || '');
+    const firmId = doc.firmId || currentFirm.id;
+
+    try {
+      await gasApi.deleteDoc(docId, docType, docNo, firmId);
+      await loadBootstrapData();
+      showToast(`${docType} #${docNo} deleted successfully. Numbering rolled back (LIFO).`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete document', 'error');
+      throw err;
+    }
+  };
+
   const handleSaveDoc = async (docData: any, previewAfter: boolean) => {
     setIsSaving(true);
     try {
@@ -405,6 +421,7 @@ export default function App() {
           onDuplicateDoc={handleDuplicateDoc}
           onMakeBillFromQuotation={handleMakeBillFromQuotation}
           onCancelDoc={handleCancelDoc}
+          onDeleteDoc={handleDeleteDoc}
           onRefresh={loadBootstrapData}
           onLock={handleLock}
           onOpenAddClient={handleOpenAddClient}
@@ -456,8 +473,10 @@ export default function App() {
       {currentScreen === 'SETTINGS' && (
         <SettingsScreen
           settings={settings}
+          docs={docs}
           onBack={() => setCurrentScreen('HOME')}
           onSave={handleSaveSettings}
+          onDeleteDoc={handleDeleteDoc}
           isSaving={isSaving}
         />
       )}

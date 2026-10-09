@@ -1,6 +1,13 @@
 export type DocType = 'BILL' | 'QUOTATION';
 export type TaxType = 'GST' | 'PST' | 'None';
 
+export interface GstRateBreakdown {
+  ratePercent: number;
+  rate: number;
+  taxableAmount: number;
+  taxAmount: number;
+}
+
 export interface LineItem {
   id?: string;
   sr?: number;
@@ -15,6 +22,10 @@ export interface LineItem {
   Rate?: number;
   tax: TaxType;
   Tax?: TaxType;
+  gstRate?: number; // Custom item GST rate, e.g. 0.18, 0.10, 0.12, 0.05, 0
+  GstRate?: number;
+  taxRate?: number;
+  TaxRate?: number;
   amount?: number;
   Amount?: number;
 }
@@ -68,10 +79,16 @@ export interface DocumentRecord {
   GoodsSub?: number;
   gst?: number;
   GST?: number;
+  gstRate?: number;
+  GstRate?: number;
+  gstBreakdown?: GstRateBreakdown[];
+  GstBreakdown?: GstRateBreakdown[];
   serviceSub?: number;
   ServiceSub?: number;
   pst?: number;
   PST?: number;
+  pstRate?: number;
+  PstRate?: number;
   otherSub?: number;
   OtherSub?: number;
   grandTotal?: number;

@@ -1,5 +1,5 @@
 // Formatters for Pakistani Currency, Dates, and Calculation helpers
-import type { LineItem, TaxType } from '../types/billing';
+import type { LineItem, TaxType, GstRateBreakdown } from '../types/billing';
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -148,6 +148,14 @@ export function safeNormalizeItems(raw: any): LineItem[] {
     const taxRaw = String(it.tax || it.Tax || 'GST').toUpperCase();
     const tax: TaxType = taxRaw === 'PST' ? 'PST' : taxRaw === 'NONE' ? 'None' : 'GST';
 
+    const rawGstRate = it.gstRate !== undefined && it.gstRate !== null && !isNaN(Number(it.gstRate))
+      ? Number(it.gstRate)
+      : it.GstRate !== undefined && it.GstRate !== null && !isNaN(Number(it.GstRate))
+      ? Number(it.GstRate)
+      : it.taxRate !== undefined && it.taxRate !== null && !isNaN(Number(it.taxRate))
+      ? Number(it.taxRate)
+      : undefined;
+
     return {
       id: String(it.id || 'item-' + idx + '-' + Date.now()),
       sr: Number(it.sr ?? it.Sr ?? idx + 1),
@@ -162,6 +170,10 @@ export function safeNormalizeItems(raw: any): LineItem[] {
       Rate: validRate,
       tax: tax,
       Tax: tax,
+      gstRate: rawGstRate,
+      GstRate: rawGstRate,
+      taxRate: rawGstRate,
+      TaxRate: rawGstRate,
       amount: validAmount,
       Amount: validAmount,
     };
@@ -169,7 +181,8 @@ export function safeNormalizeItems(raw: any): LineItem[] {
 }
 
 /**
- * Calculates live totals given line items and tax rates (100% defensive)
+ * Calculates live totals given line items and tax rates (100% defensive).
+ * Supports both document-wide default GST rate and per-item custom GST rates (e.g., 10%, 18%, custom %).
  */
 export function calculateTotals(
   items: any,
@@ -179,17 +192,48 @@ export function calculateTotals(
   let goodsSub = 0;
   let serviceSub = 0;
   let otherSub = 0;
+  let totalGst = 0;
+  let totalPst = 0;
+
+  const defaultGstRateNum = (gstRate !== undefined && gstRate !== null && !isNaN(Number(gstRate)) && Number(gstRate) >= 0)
+    ? Number(gstRate)
+    : 0.18;
+  const defaultPstRateNum = (pstRate !== undefined && pstRate !== null && !isNaN(Number(pstRate)) && Number(pstRate) >= 0)
+    ? Number(pstRate)
+    : 0.16;
 
   const safeList = safeNormalizeItems(items);
+  const gstBreakdownMap = new Map<number, { taxableAmount: number; taxAmount: number }>();
 
   for (const item of safeList) {
     const amount = Number(item.amount ?? (item.qty * item.rate)) || 0;
+    const itemRoundedAmount = Math.round(amount * 100) / 100;
+
     if (item.tax === 'GST') {
-      goodsSub += amount;
+      goodsSub += itemRoundedAmount;
+
+      // Item-level specific GST rate if provided, otherwise bill default GST rate
+      const itemGstRate = (item.gstRate !== undefined && item.gstRate !== null && !isNaN(Number(item.gstRate)) && Number(item.gstRate) >= 0)
+        ? Number(item.gstRate)
+        : (item.taxRate !== undefined && item.taxRate !== null && !isNaN(Number(item.taxRate)) && Number(item.taxRate) >= 0)
+        ? Number(item.taxRate)
+        : defaultGstRateNum;
+
+      const itemGstTax = Math.round(itemRoundedAmount * itemGstRate * 100) / 100;
+      totalGst += itemGstTax;
+
+      // Group into rate breakdown
+      const ratePct = Math.round(itemGstRate * 100);
+      const existing = gstBreakdownMap.get(ratePct) || { taxableAmount: 0, taxAmount: 0 };
+      existing.taxableAmount = Math.round((existing.taxableAmount + itemRoundedAmount) * 100) / 100;
+      existing.taxAmount = Math.round((existing.taxAmount + itemGstTax) * 100) / 100;
+      gstBreakdownMap.set(ratePct, existing);
     } else if (item.tax === 'PST') {
-      serviceSub += amount;
+      serviceSub += itemRoundedAmount;
+      const itemPstTax = Math.round(itemRoundedAmount * defaultPstRateNum * 100) / 100;
+      totalPst += itemPstTax;
     } else {
-      otherSub += amount;
+      otherSub += itemRoundedAmount;
     }
   }
 
@@ -197,18 +241,28 @@ export function calculateTotals(
   const goodsSubRounded = Math.round(goodsSub * 100) / 100;
   const serviceSubRounded = Math.round(serviceSub * 100) / 100;
   const otherSubRounded = Math.round(otherSub * 100) / 100;
+  const gstRounded = Math.round(totalGst * 100) / 100;
+  const pstRounded = Math.round(totalPst * 100) / 100;
 
-  const gst = Math.round(goodsSubRounded * (Number(gstRate) || 0.18) * 100) / 100;
-  const pst = Math.round(serviceSubRounded * (Number(pstRate) || 0.16) * 100) / 100;
+  const grandTotal = Math.round((goodsSubRounded + gstRounded + serviceSubRounded + pstRounded + otherSubRounded) * 100) / 100;
 
-  const grandTotal = Math.round((goodsSubRounded + gst + serviceSubRounded + pst + otherSubRounded) * 100) / 100;
+  // Convert breakdown map to sorted list (descending by rate percentage)
+  const gstBreakdown: GstRateBreakdown[] = Array.from(gstBreakdownMap.entries())
+    .map(([ratePercent, data]) => ({
+      ratePercent,
+      rate: ratePercent / 100,
+      taxableAmount: data.taxableAmount,
+      taxAmount: data.taxAmount,
+    }))
+    .sort((a, b) => b.ratePercent - a.ratePercent);
 
   return {
     goodsSub: goodsSubRounded,
-    gst,
+    gst: gstRounded,
     serviceSub: serviceSubRounded,
-    pst,
+    pst: pstRounded,
     otherSub: otherSubRounded,
     grandTotal,
+    gstBreakdown,
   };
 }

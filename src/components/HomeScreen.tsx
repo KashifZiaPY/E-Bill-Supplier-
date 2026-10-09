@@ -23,9 +23,22 @@ import {
   Printer,
   Sparkles,
   X,
+  BarChart3,
+  Download,
+  FileSpreadsheet,
+  CheckCircle2,
+  Trash2,
+  ShieldAlert,
 } from 'lucide-react';
 import type { DocumentRecord, SavedClient, SupplierSettings } from '../types/billing';
 import { formatCurrency, formatDateDisplay, safeNormalizeItems } from '../utils/formatters';
+import { isLastDocLIFO } from '../utils/lifoHelper';
+import { LifoDeleteModal } from './LifoDeleteModal';
+import {
+  exportDocumentsToExcel,
+  exportClientReportToExcel,
+  type ClientReportSummary,
+} from '../utils/excelExport';
 
 interface Props {
   docs: DocumentRecord[];
@@ -42,6 +55,7 @@ interface Props {
   onDuplicateDoc: (doc: DocumentRecord) => void;
   onMakeBillFromQuotation: (doc: DocumentRecord) => void;
   onCancelDoc: (docId: string) => void;
+  onDeleteDoc?: (doc: DocumentRecord) => Promise<void>;
   onRefresh: () => void;
   onLock: () => void;
   onOpenAddClient: () => void;
@@ -64,6 +78,7 @@ export const HomeScreen: React.FC<Props> = ({
   onDuplicateDoc,
   onMakeBillFromQuotation,
   onCancelDoc,
+  onDeleteDoc,
   onRefresh,
   onLock,
   onOpenAddClient,
@@ -71,10 +86,33 @@ export const HomeScreen: React.FC<Props> = ({
   onDeleteClient,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS'>('DOCUMENTS');
+  const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS' | 'REPORTS'>('DOCUMENTS');
   const [docFilter, setDocFilter] = useState<'ALL' | 'BILL' | 'QUOTATION'>('ALL');
   const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // LIFO Deletion state
+  const [docToDeleteLifo, setDocToDeleteLifo] = useState<DocumentRecord | null>(null);
+  const [isLifoModalOpen, setIsLifoModalOpen] = useState(false);
+  const [isDeletingLifo, setIsDeletingLifo] = useState(false);
+
+  const handleOpenLifoDelete = (doc: DocumentRecord) => {
+    setDocToDeleteLifo(doc);
+    setIsLifoModalOpen(true);
+  };
+
+  const handleConfirmLifoDelete = async (doc: DocumentRecord) => {
+    setIsDeletingLifo(true);
+    try {
+      if (onDeleteDoc) {
+        await onDeleteDoc(doc);
+      }
+      setIsLifoModalOpen(false);
+      setDocToDeleteLifo(null);
+    } finally {
+      setIsDeletingLifo(false);
+    }
+  };
 
   // Global Keyboard shortcuts: '/' focuses main search box, 'Escape' clears search / closes dropdown
   useEffect(() => {
@@ -244,10 +282,124 @@ export const HomeScreen: React.FC<Props> = ({
     return { totalBilled, totalGst, totalPst, billCount, quoteCount };
   }, [docs]);
 
+  // Consolidated Client-Wise Billing Report Summaries
+  const clientReportSummaries = useMemo<ClientReportSummary[]>(() => {
+    const summaryMap = new Map<string, ClientReportSummary>();
+
+    // Seed known clients from clients directory
+    (clients || []).forEach((c: any) => {
+      const name = String(c?.name || c?.Name || c?.clientName || c?.ClientName || (typeof c === 'string' ? c : '')).trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      summaryMap.set(key, {
+        clientName: name,
+        clientNTN: String(c?.ntn || c?.NTN || c?.clientNTN || c?.ClientNTN || ''),
+        clientAddress: String(c?.address || c?.Address || c?.clientAddress || c?.ClientAddress || ''),
+        billCount: 0,
+        quoteCount: 0,
+        goodsTotal: 0,
+        gstTotal: 0,
+        serviceTotal: 0,
+        pstTotal: 0,
+        grandTotal: 0,
+        lastBillDate: '',
+      });
+    });
+
+    // Aggregate from all documents in register
+    (docs || []).forEach((d) => {
+      const isCancelled = String(d.status || d.Status || '').toLowerCase() === 'cancelled';
+      if (isCancelled) return;
+
+      const docClient = String(d.clientName || d.ClientName || '').trim();
+      if (!docClient) return;
+
+      const key = docClient.toLowerCase();
+      let entry = summaryMap.get(key);
+      if (!entry) {
+        entry = {
+          clientName: docClient,
+          clientNTN: String(d.clientNTN || d.ClientNTN || ''),
+          clientAddress: String(d.clientAddress || d.ClientAddress || ''),
+          billCount: 0,
+          quoteCount: 0,
+          goodsTotal: 0,
+          gstTotal: 0,
+          serviceTotal: 0,
+          pstTotal: 0,
+          grandTotal: 0,
+          lastBillDate: '',
+        };
+        summaryMap.set(key, entry);
+      } else {
+        if (!entry.clientNTN && d.clientNTN) entry.clientNTN = String(d.clientNTN);
+        if (!entry.clientAddress && d.clientAddress) entry.clientAddress = String(d.clientAddress);
+      }
+
+      const docType = String(d.type || d.Type || 'BILL').toUpperCase();
+      const docDate = String(d.date || d.Date || '');
+      if (docDate && (!entry.lastBillDate || docDate > entry.lastBillDate)) {
+        entry.lastBillDate = docDate;
+      }
+
+      if (docType === 'BILL') {
+        entry.billCount += 1;
+        entry.goodsTotal += Number(d.goodsSub ?? d.GoodsSub ?? 0);
+        entry.gstTotal += Number(d.gst ?? d.GST ?? 0);
+        entry.serviceTotal += Number(d.serviceSub ?? d.ServiceSub ?? 0);
+        entry.pstTotal += Number(d.pst ?? d.PST ?? 0);
+        entry.grandTotal += Number(d.grandTotal ?? d.GrandTotal ?? 0);
+      } else {
+        entry.quoteCount += 1;
+      }
+    });
+
+    // Sort by grandTotal descending (highest revenue client first)
+    return Array.from(summaryMap.values()).sort((a, b) => b.grandTotal - a.grandTotal);
+  }, [clients, docs]);
+
+  // Filtered Client Report matching search query
+  const filteredClientReport = useMemo(() => {
+    const q = String(searchQuery || '').toLowerCase().trim();
+    if (!q) return clientReportSummaries;
+
+    return clientReportSummaries.filter((r) => {
+      const name = r.clientName.toLowerCase();
+      const ntn = r.clientNTN.toLowerCase();
+      const addr = r.clientAddress.toLowerCase();
+      const totalStr = String(r.grandTotal);
+      const totalFmt = formatCurrency(r.grandTotal).toLowerCase();
+      return name.includes(q) || ntn.includes(q) || addr.includes(q) || totalStr.includes(q) || totalFmt.includes(q);
+    });
+  }, [clientReportSummaries, searchQuery]);
+
+  // Totals across filtered client report
+  const reportTotals = useMemo(() => {
+    let totalBills = 0;
+    let totalQuotes = 0;
+    let totalGoods = 0;
+    let totalGst = 0;
+    let totalServices = 0;
+    let totalPst = 0;
+    let totalGrand = 0;
+
+    for (const r of filteredClientReport) {
+      totalBills += r.billCount;
+      totalQuotes += r.quoteCount;
+      totalGoods += r.goodsTotal;
+      totalGst += r.gstTotal;
+      totalServices += r.serviceTotal;
+      totalPst += r.pstTotal;
+      totalGrand += r.grandTotal;
+    }
+
+    return { totalBills, totalQuotes, totalGoods, totalGst, totalServices, totalPst, totalGrand };
+  }, [filteredClientReport]);
+
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-between">
+    <div className="min-h-screen bg-[#F4F6F9] flex flex-col justify-between">
       {/* Executive Enterprise Header */}
-      <header className="bg-gradient-to-r from-[#0F2544] via-[#163866] to-[#0F2544] text-white sticky top-0 z-30 shadow-md">
+      <header className="bg-gradient-to-r from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white border-b border-blue-900/80 sticky top-0 z-30 shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Owner & Group Brand */}
           <div className="flex items-center gap-3">
@@ -327,39 +479,39 @@ export const HomeScreen: React.FC<Props> = ({
       <main className="max-w-6xl mx-auto px-4 py-5 w-full flex-1">
         {/* KPI Analytics Cards: Separated GST & PST display */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white border border-blue-900 shadow-sm">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 block">
               Active Entity
             </span>
-            <div className="text-base sm:text-lg font-black text-[#0F2544] truncate mt-0.5">
+            <div className="text-base sm:text-lg font-black text-white truncate mt-0.5">
               {currentFirm.name}
             </div>
-            <div className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">
+            <div className="text-[11px] text-amber-300 truncate mt-0.5 font-mono font-bold">
               NTN: {currentFirm.ntn || '—'}
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white border border-emerald-200/90 shadow-xs hover:border-emerald-300 transition">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 block">
               Total Billed (PKR)
             </span>
-            <div className="text-base sm:text-lg font-black font-mono text-emerald-700 truncate mt-0.5">
+            <div className="text-base sm:text-lg font-black font-mono text-emerald-800 truncate mt-0.5">
               Rs. {formatCurrency(analytics.totalBilled)}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
+            <div className="text-[11px] text-emerald-700/80 mt-0.5 font-medium">
               Across active orders
             </div>
           </div>
 
           {/* Separated Card: Federal GST Total */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/70 to-white border border-blue-200/80 shadow-xs hover:border-blue-300 transition">
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/40 to-white border border-blue-200/90 shadow-xs hover:border-blue-300 transition">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-900 block">
-                Federal GST (18%)
+                Federal GST
               </span>
               <span className="w-2 h-2 rounded-full bg-blue-600"></span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-blue-900 truncate mt-0.5">
+            <div className="text-base sm:text-lg font-black font-mono text-blue-950 truncate mt-0.5">
               Rs. {formatCurrency(analytics.totalGst)}
             </div>
             <div className="text-[11px] text-blue-700/80 mt-0.5 font-medium">
@@ -368,26 +520,26 @@ export const HomeScreen: React.FC<Props> = ({
           </div>
 
           {/* Separated Card: Punjab PST Total */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/70 to-white border border-emerald-200/80 shadow-xs hover:border-emerald-300 transition">
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-teal-50 via-cyan-50/40 to-white border border-teal-200/90 shadow-xs hover:border-teal-300 transition">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-900 block">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-teal-900 block">
                 Punjab PST (16%)
               </span>
-              <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+              <span className="w-2 h-2 rounded-full bg-teal-600"></span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-emerald-800 truncate mt-0.5">
+            <div className="text-base sm:text-lg font-black font-mono text-teal-900 truncate mt-0.5">
               Rs. {formatCurrency(analytics.totalPst)}
             </div>
-            <div className="text-[11px] text-emerald-700/80 mt-0.5 font-medium">
+            <div className="text-[11px] text-teal-700/80 mt-0.5 font-medium">
               Sales Tax on Services
             </div>
           </div>
 
-          <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+          <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-gradient-to-br from-slate-50 via-indigo-50/30 to-white border border-slate-200/90 shadow-xs hover:border-slate-300 transition">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
               Documents Register
             </span>
-            <div className="text-base sm:text-lg font-black text-slate-800 mt-0.5">
+            <div className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
               {analytics.billCount} Bills <span className="text-slate-400 font-normal">/</span> {analytics.quoteCount} Quotes
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
@@ -400,55 +552,55 @@ export const HomeScreen: React.FC<Props> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-6">
           <button
             onClick={onNewBill}
-            className="group p-5 rounded-2xl bg-[#0F2544] hover:bg-[#163866] active:scale-[0.99] text-white flex flex-col justify-between shadow-md transition cursor-pointer text-left h-28"
+            className="group p-5 rounded-2xl bg-gradient-to-br from-[#0B1E36] via-[#123663] to-[#0B1E36] hover:from-[#102C4E] hover:to-[#163D6D] active:scale-[0.99] text-white flex flex-col justify-between shadow-md hover:shadow-xl border border-blue-800/40 transition cursor-pointer text-left h-28"
           >
             <div className="flex justify-between items-start">
               <span className="p-2 rounded-xl bg-white/15 text-white">
-                <FilePlus className="w-5 h-5" />
+                <FilePlus className="w-5 h-5 text-emerald-400" />
               </span>
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md">
+              <span className="text-xs font-bold uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/40 px-2 py-0.5 rounded-md">
                 Next #{currentFirm.nextBillNo || '101'}
               </span>
             </div>
             <div>
-              <div className="text-lg font-bold tracking-tight">Create New Bill</div>
+              <div className="text-lg font-black tracking-tight text-white">Create New Bill</div>
               <p className="text-xs text-blue-200 font-medium">Under {currentFirm.name}</p>
             </div>
           </button>
 
           <button
             onClick={onNewQuotation}
-            className="group p-5 rounded-2xl bg-slate-800 hover:bg-slate-900 active:scale-[0.99] text-white flex flex-col justify-between shadow-md transition cursor-pointer text-left h-28"
+            className="group p-5 rounded-2xl bg-gradient-to-br from-[#1E293B] via-[#2A3B52] to-[#1E293B] hover:from-[#253348] hover:to-[#334661] active:scale-[0.99] text-white flex flex-col justify-between shadow-md hover:shadow-xl border border-slate-700/50 transition cursor-pointer text-left h-28"
           >
             <div className="flex justify-between items-start">
               <span className="p-2 rounded-xl bg-white/15 text-white">
-                <FileText className="w-5 h-5" />
+                <FileText className="w-5 h-5 text-blue-300" />
               </span>
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md">
+              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md text-slate-200">
                 Next #{currentFirm.nextQuoteNo || 'Q-201'}
               </span>
             </div>
             <div>
-              <div className="text-lg font-bold tracking-tight">New Quotation</div>
+              <div className="text-lg font-black tracking-tight text-white">New Quotation</div>
               <p className="text-xs text-slate-300 font-medium">Rate estimate with 7-day validity</p>
             </div>
           </button>
 
           <button
             onClick={onOpenSettings}
-            className="group p-5 rounded-2xl bg-white hover:bg-slate-50 active:scale-[0.99] text-slate-800 border border-slate-200 flex flex-col justify-between shadow-xs transition cursor-pointer text-left h-28"
+            className="group p-5 rounded-2xl bg-white hover:bg-blue-50/50 active:scale-[0.99] text-slate-800 border border-slate-200/90 flex flex-col justify-between shadow-xs hover:shadow-md transition cursor-pointer text-left h-28"
           >
             <div className="flex justify-between items-start">
-              <span className="p-2 rounded-xl bg-slate-100 text-[#0F2544]">
-                <Settings className="w-5 h-5" />
+              <span className="p-2 rounded-xl bg-blue-50 text-[#0F2544] border border-blue-200/50">
+                <Settings className="w-5 h-5 text-[#0F2544]" />
               </span>
-              <span className="text-xs font-bold text-slate-500">
+              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
                 {firms.length} Firms Active
               </span>
             </div>
             <div>
-              <div className="text-lg font-bold tracking-tight text-slate-900">Enterprise Settings</div>
-              <p className="text-xs text-slate-500 font-medium">Firms, Margins, Taxes &amp; Backend</p>
+              <div className="text-lg font-black tracking-tight text-slate-900">Manage Profiles</div>
+              <p className="text-xs text-slate-500 font-medium">Print margins, NTN &amp; settings</p>
             </div>
           </button>
         </div>
@@ -458,12 +610,12 @@ export const HomeScreen: React.FC<Props> = ({
           {/* Header Controls */}
           <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Primary Tab Switcher */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <button
                 onClick={() => setActiveTab('DOCUMENTS')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
                   activeTab === 'DOCUMENTS'
-                    ? 'bg-[#0F2544] text-white shadow-xs'
+                    ? 'bg-[#0F2544] text-white shadow-sm ring-1 ring-[#0F2544]'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
@@ -473,35 +625,58 @@ export const HomeScreen: React.FC<Props> = ({
 
               <button
                 onClick={() => setActiveTab('CLIENTS')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
                   activeTab === 'CLIENTS'
-                    ? 'bg-[#0F2544] text-white shadow-xs'
+                    ? 'bg-[#0F2544] text-white shadow-sm ring-1 ring-[#0F2544]'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <Users className="w-4 h-4" />
                 <span>Clients Directory ({clients.length})</span>
               </button>
+
+              <button
+                onClick={() => setActiveTab('REPORTS')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                  activeTab === 'REPORTS'
+                    ? 'bg-[#0F2544] text-white shadow-sm ring-1 ring-[#0F2544]'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4 text-emerald-500" />
+                <span>Client Billing Report ({clientReportSummaries.length})</span>
+              </button>
             </div>
 
-            {/* Right side: Search & Filter Controls */}
-            <div className="flex items-center gap-2">
+            {/* Right side: Search & Filter & Export Controls */}
+            <div className="flex flex-wrap items-center gap-2">
               {activeTab === 'DOCUMENTS' && (
-                <div className="flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-bold">
-                  {(['ALL', 'BILL', 'QUOTATION'] as const).map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setDocFilter(filter)}
-                      className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
-                        docFilter === filter
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  <div className="flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-bold">
+                    {(['ALL', 'BILL', 'QUOTATION'] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        onClick={() => setDocFilter(filter)}
+                        className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
+                          docFilter === filter
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => exportDocumentsToExcel(filteredDocs, currentFirm.name)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer border border-emerald-500"
+                    title="Export Documents Register to Excel (.xlsx)"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-white" />
+                    <span className="hidden sm:inline">Export Excel</span>
+                  </button>
+                </>
               )}
 
               {activeTab === 'CLIENTS' && (
@@ -514,8 +689,19 @@ export const HomeScreen: React.FC<Props> = ({
                 </button>
               )}
 
+              {activeTab === 'REPORTS' && (
+                <button
+                  onClick={() => exportClientReportToExcel(filteredClientReport, currentFirm.name)}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  title="Export Client-Wise Billing Report to Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Export Report (.xlsx)</span>
+                </button>
+              )}
+
               {/* Omnisearch Box */}
-              <div className="relative w-full sm:w-64 md:w-80">
+              <div className="relative w-full sm:w-60 md:w-72">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   ref={searchInputRef}
@@ -524,8 +710,10 @@ export const HomeScreen: React.FC<Props> = ({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={
                     activeTab === 'DOCUMENTS'
-                      ? 'Search Doc#, Bill#, Value, Client, Item...'
-                      : 'Search client name, NTN, STRN, address...'
+                      ? 'Search Doc#, Bill#, Value, Client...'
+                      : activeTab === 'CLIENTS'
+                      ? 'Search client name, NTN, address...'
+                      : 'Search client report...'
                   }
                   className="w-full pl-9 pr-8 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none text-slate-800 placeholder:text-slate-400 transition"
                 />
@@ -576,6 +764,7 @@ export const HomeScreen: React.FC<Props> = ({
                     const isCancelled = status.toLowerCase() === 'cancelled';
                     const isMenuOpen = activeMenuDocId === docId;
                     const firmName = String(doc.firmName || currentFirm.name);
+                    const isLastLIFO = isLastDocLIFO(doc, docs, currentFirm.id);
 
                     return (
                       <div
@@ -607,6 +796,14 @@ export const HomeScreen: React.FC<Props> = ({
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
                               {firmName}
                             </span>
+                            {isLastLIFO && (
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs"
+                                title="Latest entry in LIFO sequence (eligible for deletion under PIN)"
+                              >
+                                Latest (LIFO)
+                              </span>
+                            )}
                             {isCancelled && (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700">
                                 Cancelled
@@ -729,6 +926,22 @@ export const HomeScreen: React.FC<Props> = ({
                                       <span>Cancel Document</span>
                                     </button>
                                   )}
+
+                                  {/* LIFO Protected Deletion: STRICTLY ONLY rendered for the last entry in sequence */}
+                                  {isLastLIFO && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenuDocId(null);
+                                        handleOpenLifoDelete(doc);
+                                      }}
+                                      className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2 cursor-pointer border-t border-rose-100 font-bold"
+                                      title="LIFO Protected Deletion: Only the last recorded entry may be deleted under PIN authorization"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-rose-600" />
+                                      <span>Delete Record (LIFO)</span>
+                                    </button>
+                                  )}
                                 </div>
                               </>
                             )}
@@ -829,13 +1042,297 @@ export const HomeScreen: React.FC<Props> = ({
               )}
             </div>
           )}
+
+          {/* TAB 3: CLIENT-WISE BILLING & TAX REPORT */}
+          {activeTab === 'REPORTS' && (
+            <div>
+              {/* Report Top Sub-Header & Summary Stats */}
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-[#0F2544] to-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                      <BarChart3 className="w-5 h-5" />
+                    </span>
+                    <h2 className="text-base sm:text-lg font-bold tracking-tight">
+                      Client-Wise Total Billing &amp; Tax Report
+                    </h2>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1 max-w-xl">
+                    Consolidated breakdown of total bills, goods subtotal, sales taxes (Federal GST &amp; Punjab PST), and gross billed amounts per client.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+                  <button
+                    onClick={() => exportClientReportToExcel(filteredClientReport, currentFirm.name)}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Export Client Report (.xlsx)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Metric Overview Row */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-4 bg-slate-50 border-b border-slate-200">
+                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                    Clients in Report
+                  </span>
+                  <div className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
+                    {filteredClientReport.length} <span className="text-xs font-medium text-slate-500">Clients</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {reportTotals.totalBills} Bills · {reportTotals.totalQuotes} Quotes
+                  </div>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                    Total Billed (PKR)
+                  </span>
+                  <div className="text-base sm:text-lg font-black font-mono text-[#0F2544] mt-0.5">
+                    Rs. {formatCurrency(reportTotals.totalGrand)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    All active client invoices
+                  </div>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase text-blue-900 block">
+                    Federal GST (18%)
+                  </span>
+                  <div className="text-base sm:text-lg font-black font-mono text-blue-800 mt-0.5">
+                    Rs. {formatCurrency(reportTotals.totalGst)}
+                  </div>
+                  <div className="text-[11px] text-blue-700/80 mt-0.5">
+                    Goods: Rs. {formatCurrency(reportTotals.totalGoods)}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase text-emerald-900 block">
+                    Punjab PST (16%)
+                  </span>
+                  <div className="text-base sm:text-lg font-black font-mono text-emerald-800 mt-0.5">
+                    Rs. {formatCurrency(reportTotals.totalPst)}
+                  </div>
+                  <div className="text-[11px] text-emerald-700/80 mt-0.5">
+                    Services: Rs. {formatCurrency(reportTotals.totalServices)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Report Data Table */}
+              {filteredClientReport.length === 0 ? (
+                <div className="p-12 text-center text-slate-500">
+                  <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="font-bold text-slate-700">No client records found</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {searchQuery ? `No client matches "${searchQuery}". Clear search to view all.` : 'Bills will automatically populate this report as you create them.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-[#0F2544] text-white uppercase text-[10px] font-bold tracking-wider">
+                        <th className="py-2.5 px-3 w-10 text-center">Sr</th>
+                        <th className="py-2.5 px-3">Client Particulars</th>
+                        <th className="py-2.5 px-2.5 text-center">Bills</th>
+                        <th className="py-2.5 px-2.5 text-center">Quotes</th>
+                        <th className="py-2.5 px-3 text-right">Goods Value</th>
+                        <th className="py-2.5 px-3 text-right">GST (18%)</th>
+                        <th className="py-2.5 px-3 text-right">Services</th>
+                        <th className="py-2.5 px-3 text-right">PST (16%)</th>
+                        <th className="py-2.5 px-3 text-right font-black">Grand Total</th>
+                        <th className="py-2.5 px-3 text-center">Last Bill</th>
+                        <th className="py-2.5 px-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {filteredClientReport.map((c, i) => {
+                        const isEven = i % 2 === 0;
+                        return (
+                          <tr
+                            key={c.clientName + i}
+                            className={`hover:bg-blue-50/70 transition ${isEven ? 'bg-white' : 'bg-slate-50/60'}`}
+                          >
+                            <td className="py-3 px-3 text-center font-bold text-slate-500">
+                              {i + 1}
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900 text-sm">
+                                {c.clientName}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                {c.clientNTN && (
+                                  <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                    NTN: {c.clientNTN}
+                                  </span>
+                                )}
+                                {c.clientAddress && (
+                                  <span className="text-[11px] text-slate-500 truncate max-w-xs">
+                                    {c.clientAddress}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-2.5 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded-full font-bold text-xs ${
+                                c.billCount > 0 ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-400'
+                              }`}>
+                                {c.billCount}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2.5 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded-full font-semibold text-xs ${
+                                c.quoteCount > 0 ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'
+                              }`}>
+                                {c.quoteCount}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-slate-700">
+                              Rs. {formatCurrency(c.goodsTotal)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-blue-700 font-semibold">
+                              Rs. {formatCurrency(c.gstTotal)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-slate-700">
+                              Rs. {formatCurrency(c.serviceTotal)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-emerald-700 font-semibold">
+                              Rs. {formatCurrency(c.pstTotal)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-black text-slate-900 text-sm">
+                              Rs. {formatCurrency(c.grandTotal)}
+                            </td>
+                            <td className="py-3 px-3 text-center text-xs text-slate-600 whitespace-nowrap">
+                              {c.lastBillDate ? formatDateDisplay(c.lastBillDate) : '—'}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              <button
+                                onClick={() => {
+                                  setDocFilter('ALL');
+                                  setSearchQuery(c.clientName);
+                                  setActiveTab('DOCUMENTS');
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-[#0F2544] hover:text-white text-slate-700 font-bold text-[11px] transition cursor-pointer"
+                                title={`View all documents for ${c.clientName}`}
+                              >
+                                View Docs
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-900 text-white font-bold text-xs border-t-2 border-slate-950">
+                        <td colSpan={2} className="py-3 px-3 font-extrabold uppercase tracking-wide">
+                          TOTAL ({filteredClientReport.length} Clients)
+                        </td>
+                        <td className="py-3 px-2.5 text-center font-bold">
+                          {reportTotals.totalBills}
+                        </td>
+                        <td className="py-3 px-2.5 text-center font-bold">
+                          {reportTotals.totalQuotes}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono">
+                          Rs. {formatCurrency(reportTotals.totalGoods)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-blue-200">
+                          Rs. {formatCurrency(reportTotals.totalGst)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono">
+                          Rs. {formatCurrency(reportTotals.totalServices)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-emerald-200">
+                          Rs. {formatCurrency(reportTotals.totalPst)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-black text-amber-300 text-sm">
+                          Rs. {formatCurrency(reportTotals.totalGrand)}
+                        </td>
+                        <td colSpan={2} className="py-3 px-3 text-center text-xs text-slate-300 font-normal">
+                          Consolidated Total
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </main>
 
+      {/* Mobile Sticky Action Dock (Screen width < 640px) */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex items-center justify-between gap-2 shadow-2xl">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveTab('DOCUMENTS')}
+            className={`p-1.5 rounded-xl text-xs font-bold flex flex-col items-center ${
+              activeTab === 'DOCUMENTS' ? 'text-[#0F2544] font-black' : 'text-slate-500'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span className="text-[10px]">Docs</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('CLIENTS')}
+            className={`p-1.5 rounded-xl text-xs font-bold flex flex-col items-center ${
+              activeTab === 'CLIENTS' ? 'text-[#0F2544] font-black' : 'text-slate-500'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span className="text-[10px]">Clients</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('REPORTS')}
+            className={`p-1.5 rounded-xl text-xs font-bold flex flex-col items-center ${
+              activeTab === 'REPORTS' ? 'text-[#0F2544] font-black' : 'text-slate-500'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span className="text-[10px]">Reports</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onNewQuotation}
+            className="px-2.5 py-2 rounded-xl bg-slate-800 text-white font-bold text-xs flex items-center gap-1 shadow-xs"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>+ Quote</span>
+          </button>
+          <button
+            onClick={onNewBill}
+            className="px-3.5 py-2 rounded-xl bg-[#0F2544] text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
+          >
+            <FilePlus className="w-4 h-4" />
+            <span>+ New Bill</span>
+          </button>
+        </div>
+      </div>
+
       {/* Footer Credit Line */}
-      <footer className="py-4 text-center text-xs text-slate-400 font-medium">
+      <footer className="py-4 pb-20 sm:pb-4 text-center text-xs text-slate-400 font-medium">
         Developed by MKZ · {settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Systems
       </footer>
+
+      {/* LIFO PIN Protected Delete Modal */}
+      <LifoDeleteModal
+        isOpen={isLifoModalOpen}
+        doc={docToDeleteLifo}
+        onClose={() => {
+          setIsLifoModalOpen(false);
+          setDocToDeleteLifo(null);
+        }}
+        onConfirmDelete={handleConfirmLifoDelete}
+        isDeleting={isDeletingLifo}
+      />
     </div>
   );
 };

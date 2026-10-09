@@ -11,11 +11,15 @@ interface Props {
 
 export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead }) => {
   const items = safeNormalizeItems(doc.items || doc.Items);
-  const gstRate = settings.gstRate || 0.18;
+  const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
+    ? Number(doc.gstRate)
+    : ((doc as any).GstRate !== undefined && Number((doc as any).GstRate) >= 0)
+    ? Number((doc as any).GstRate)
+    : (settings.gstRate || 0.18);
   const gstPercent = Math.round(gstRate * 100);
 
   // Dynamic live calculation fallback
-  const computed = calculateTotals(items, gstRate, settings.pstRate || 0.16);
+  const computed = calculateTotals(items, gstRate, 0.16);
 
   const goodsSub = (doc.goodsSub && doc.goodsSub > 0) ? doc.goodsSub : (doc.GoodsSub && doc.GoodsSub > 0) ? doc.GoodsSub : computed.goodsSub;
   const gst = (doc.gst && doc.gst > 0) ? doc.gst : (doc.GST && doc.GST > 0) ? doc.GST : computed.gst;
@@ -51,8 +55,10 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
 
       {/* Main Title & Invoice Number */}
       <div className="flex justify-between items-center border-b-2 border-black pb-1 mb-2">
-        <div className="text-xl font-black uppercase tracking-wider text-black">
-          SALES TAX INVOICE
+        <div className="flex items-center gap-3">
+          <div className="text-xl font-black uppercase tracking-wider text-black">
+            SALES TAX INVOICE
+          </div>
         </div>
         <div className="text-right text-[10pt] font-bold">
           <div>Invoice #: <span className="underline font-mono">{docNo}</span></div>
@@ -105,18 +111,37 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
           </tr>
         </thead>
         <tbody>
-          {/* Main Single Summary Row (NO hardcoded vehicle parts text) */}
-          <tr className="border-b border-black font-medium bg-white">
-            <td className="border-r border-black py-2 px-1 text-center font-bold">1 Job</td>
-            <td className="border-r border-black py-2 px-2">
-              <span className="font-bold">AS PER BILL NO. {docNo}</span>
-            </td>
-            <td className="border-r border-black py-2 px-1.5 text-right font-mono">{formatCurrency(goodsSub)}</td>
-            <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(goodsSub)}</td>
-            <td className="border-r border-black py-2 px-1 text-center font-bold">{gstPercent}%</td>
-            <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(gst)}</td>
-            <td className="py-2 px-1.5 text-right font-black font-mono">{formatCurrency(valueIncTax)}</td>
-          </tr>
+          {/* GST Item Rows: Displays breakdown for multiple rates or standard row for uniform rate */}
+          {computed.gstBreakdown && computed.gstBreakdown.length > 1 ? (
+            computed.gstBreakdown.map((b) => (
+              <tr key={b.ratePercent} className="border-b border-black font-medium bg-white text-[9.5pt]">
+                <td className="border-r border-black py-2 px-1 text-center font-bold">1 Job</td>
+                <td className="border-r border-black py-2 px-2">
+                  <span className="font-bold">AS PER BILL NO. {docNo}</span>
+                  <span className="text-[8.5pt] text-gray-700 block">Goods subject to {b.ratePercent}% Sales Tax</span>
+                </td>
+                <td className="border-r border-black py-2 px-1.5 text-right font-mono">{formatCurrency(b.taxableAmount)}</td>
+                <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(b.taxableAmount)}</td>
+                <td className="border-r border-black py-2 px-1 text-center font-bold">{b.ratePercent}%</td>
+                <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(b.taxAmount)}</td>
+                <td className="py-2 px-1.5 text-right font-black font-mono">{formatCurrency(b.taxableAmount + b.taxAmount)}</td>
+              </tr>
+            ))
+          ) : (
+            <tr className="border-b border-black font-medium bg-white">
+              <td className="border-r border-black py-2 px-1 text-center font-bold">1 Job</td>
+              <td className="border-r border-black py-2 px-2">
+                <span className="font-bold">AS PER BILL NO. {docNo}</span>
+              </td>
+              <td className="border-r border-black py-2 px-1.5 text-right font-mono">{formatCurrency(goodsSub)}</td>
+              <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(goodsSub)}</td>
+              <td className="border-r border-black py-2 px-1 text-center font-bold">
+                {computed.gstBreakdown?.[0]?.ratePercent ?? gstPercent}%
+              </td>
+              <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(gst)}</td>
+              <td className="py-2 px-1.5 text-right font-black font-mono">{formatCurrency(valueIncTax)}</td>
+            </tr>
+          )}
 
           {/* 4 Empty Form Rows for standard paper format */}
           {emptyRows.map((n) => (
@@ -131,19 +156,19 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
             </tr>
           ))}
 
-          {/* TOTAL ROW (Clean white, crisp thick top and double bottom lines) */}
-          <tr className="bg-white border-t-2 border-b-2 border-black font-bold">
-            <td colSpan={3} className="border-r border-black py-1 px-2 text-right uppercase">
+          {/* TOTAL ROW - Prominent with Grey Highlight and Distinct Bold Font */}
+          <tr className="bg-gray-200 print:bg-gray-200 border-t-2 border-b-[3px] border-black text-[11pt] font-black">
+            <td colSpan={3} className="border-r border-black py-2 px-2 text-right uppercase tracking-wider text-black">
               TOTAL:
             </td>
-            <td className="border-r border-black py-1 px-1.5 text-right font-mono">
+            <td className="border-r border-black py-2 px-1.5 text-right font-mono font-bold text-black">
               {formatCurrency(goodsSub)}
             </td>
-            <td className="border-r border-black py-1 px-1 text-center"></td>
-            <td className="border-r border-black py-1 px-1.5 text-right font-mono">
+            <td className="border-r border-black py-2 px-1 text-center"></td>
+            <td className="border-r border-black py-2 px-1.5 text-right font-mono font-bold text-black">
               {formatCurrency(gst)}
             </td>
-            <td className="py-1 px-1.5 text-right font-black font-mono">
+            <td className="py-2 px-1.5 text-right font-black font-mono text-[11.5pt] text-black underline decoration-double">
               {formatCurrency(valueIncTax)}
             </td>
           </tr>
@@ -179,6 +204,14 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
           <p className="text-xs font-black uppercase tracking-wider text-black">For {firmName}</p>
           <p className="text-xs text-gray-700">Authorised Signatory & Stamp</p>
         </div>
+      </div>
+
+      {/* Bottom Page Footer */}
+      <div className="flex justify-between items-center border-t border-gray-300 pt-1.5 mt-3 text-[8.5pt] text-gray-600">
+        <span>Sales Tax Invoice #{docNo} · {clientName}</span>
+        <span className="font-bold text-gray-800">
+          Page 1 of 1
+        </span>
       </div>
     </div>
   );

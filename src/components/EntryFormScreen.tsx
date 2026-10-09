@@ -9,6 +9,7 @@ import {
   Building,
   Calendar,
   FileCheck,
+  Lock,
 } from 'lucide-react';
 import type {
   CatalogItem,
@@ -113,6 +114,7 @@ export const EntryFormScreen: React.FC<Props> = ({
   });
 
   const [formError, setFormError] = useState<string>('');
+  const [attemptedSubmit, setAttemptedSubmit] = useState<boolean>(false);
 
   // Dropdown states & Outside-click Refs
   const [showClientDropdown, setShowClientDropdown] = useState(false);
@@ -190,13 +192,33 @@ export const EntryFormScreen: React.FC<Props> = ({
     ];
   });
 
-  // Live Totals calculation using selected firm's tax rates
-  const totals = useMemo(() => {
-    return calculateTotals(items, activeFirm.gstRate || 0.18, activeFirm.pstRate || 0.16);
-  }, [items, activeFirm.gstRate, activeFirm.pstRate]);
+  // Tax Rates State: Custom GST rate per bill, while Punjab PST is legally fixed at 16%
+  const PST_FIXED_RATE = 0.16;
+  const pstPercent = 16;
 
-  const gstPercent = Math.round((activeFirm.gstRate || 0.18) * 100);
-  const pstPercent = Math.round((activeFirm.pstRate || 0.16) * 100);
+  const [gstRatePercent, setGstRatePercent] = useState<number>(() => {
+    if (initialDoc?.gstRate && initialDoc.gstRate > 0) {
+      return Math.round(initialDoc.gstRate * 100);
+    }
+    if ((initialDoc as any)?.GstRate && (initialDoc as any).GstRate > 0) {
+      return Math.round((initialDoc as any).GstRate * 100);
+    }
+    return Math.round((activeFirm.gstRate || 0.18) * 100);
+  });
+
+  const [isCustomGstInput, setIsCustomGstInput] = useState<boolean>(() => {
+    const r = initialDoc?.gstRate ?? (initialDoc as any)?.GstRate ?? (activeFirm.gstRate || 0.18);
+    const pct = Math.round(r * 100);
+    return ![18, 17, 15, 12, 5, 0].includes(pct);
+  });
+
+  const gstRateDecimal = (Number(gstRatePercent) || 0) / 100;
+  const gstPercent = Math.round(gstRatePercent);
+
+  // Live Totals calculation using custom GST rate and statutory 16% PST rate
+  const totals = useMemo(() => {
+    return calculateTotals(items, gstRateDecimal, PST_FIXED_RATE);
+  }, [items, gstRateDecimal]);
 
   // Handlers for Items
   const handleItemChange = (
@@ -230,9 +252,16 @@ export const EntryFormScreen: React.FC<Props> = ({
         qty: 1,
         rate: 0,
         tax: 'GST',
+        gstRate: gstRateDecimal,
         amount: 0,
       },
     ]);
+  };
+
+  const handleApplyGstRateToAllGoods = (targetRateDecimal: number) => {
+    setItems((prev) =>
+      prev.map((it) => (it.tax === 'GST' ? { ...it, gstRate: targetRateDecimal } : it))
+    );
   };
 
   const removeItemRow = (index: number) => {
@@ -246,6 +275,7 @@ export const EntryFormScreen: React.FC<Props> = ({
           qty: 1,
           rate: 0,
           tax: 'GST',
+          gstRate: gstRateDecimal,
           amount: 0,
         },
       ]);
@@ -290,21 +320,39 @@ export const EntryFormScreen: React.FC<Props> = ({
 
   // Submit Handler
   const handleSubmit = async (previewAfter: boolean) => {
+    setAttemptedSubmit(true);
     const trimmedClient = clientName.trim();
     if (!trimmedClient) {
       setFormError('Client Name is required. Please type or select a client.');
       return;
     }
 
-    const validItems = items.filter(
-      (i) => String(i.description).trim() && Number(i.qty) > 0
-    );
-    if (validItems.length === 0) {
-      setFormError('Please add at least one line item with a description and quantity greater than 0.');
+    if (!items || items.length === 0) {
+      setFormError('Please add at least one line item.');
       return;
     }
 
-    const liveTotals = calculateTotals(validItems, activeFirm.gstRate || 0.18, activeFirm.pstRate || 0.16);
+    // All line item fields are strictly mandatory
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const desc = String(it.description || '').trim();
+      const unit = String(it.unit || '').trim();
+      const q = Number(it.qty);
+      const r = Number(it.rate);
+
+      const missing: string[] = [];
+      if (!desc) missing.push('Description');
+      if (!unit) missing.push('Unit');
+      if (!(q > 0) || isNaN(q)) missing.push('Quantity (> 0)');
+      if (!(r > 0) || isNaN(r)) missing.push('Rate (> 0)');
+
+      if (missing.length > 0) {
+        setFormError(`Line Item #${i + 1} is incomplete: ${missing.join(', ')} are mandatory.`);
+        return;
+      }
+    }
+
+    const liveTotals = calculateTotals(items, gstRateDecimal, PST_FIXED_RATE);
 
     const docPayload: any = {
       docId: initialDoc?.docId || initialDoc?.DocID,
@@ -329,6 +377,12 @@ export const EntryFormScreen: React.FC<Props> = ({
       RefText: refText.trim(),
       requestId: requestIdRef.current,
       RequestId: requestIdRef.current,
+      gstRate: gstRateDecimal,
+      GstRate: gstRateDecimal,
+      pstRate: PST_FIXED_RATE,
+      PstRate: PST_FIXED_RATE,
+      gstBreakdown: liveTotals.gstBreakdown,
+      GstBreakdown: liveTotals.gstBreakdown,
       goodsSub: liveTotals.goodsSub,
       GoodsSub: liveTotals.goodsSub,
       gst: liveTotals.gst,
@@ -341,23 +395,30 @@ export const EntryFormScreen: React.FC<Props> = ({
       OtherSub: liveTotals.otherSub,
       grandTotal: liveTotals.grandTotal,
       GrandTotal: liveTotals.grandTotal,
-      items: validItems.map((it, idx) => {
+      items: items.map((it, idx) => {
         const q = Number(it.qty) || 0;
         const r = Number(it.rate) || 0;
         const a = Math.round(q * r * 100) / 100;
+        const itemGst = (it.gstRate !== undefined && it.gstRate !== null && !isNaN(Number(it.gstRate)))
+          ? Number(it.gstRate)
+          : gstRateDecimal;
         return {
           sr: idx + 1,
           Sr: idx + 1,
           description: String(it.description).trim(),
           Description: String(it.description).trim(),
-          unit: it.unit || 'Nos',
-          Unit: it.unit || 'Nos',
+          unit: String(it.unit || 'Nos').trim(),
+          Unit: String(it.unit || 'Nos').trim(),
           qty: q,
           Qty: q,
           rate: r,
           Rate: r,
           tax: it.tax,
           Tax: it.tax,
+          gstRate: it.tax === 'GST' ? itemGst : undefined,
+          GstRate: it.tax === 'GST' ? itemGst : undefined,
+          taxRate: it.tax === 'GST' ? itemGst : it.tax === 'PST' ? PST_FIXED_RATE : 0,
+          TaxRate: it.tax === 'GST' ? itemGst : it.tax === 'PST' ? PST_FIXED_RATE : 0,
           amount: a,
           Amount: a,
         };
@@ -368,30 +429,26 @@ export const EntryFormScreen: React.FC<Props> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-between pb-32 sm:pb-12">
-      {/* Top Navigation */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <div className="min-h-screen bg-[#F4F6F9] flex flex-col justify-between pb-32 sm:pb-12">
+      {/* Top Navigation: Executive Navy & Gold Corporate Header */}
+      <header className="bg-gradient-to-r from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white border-b border-blue-900/80 sticky top-0 z-30 shadow-md">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
               aria-label="Back"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-5 h-5 text-white" />
             </button>
             <div>
               <div className="flex items-center gap-2">
                 <span
-                  className={`text-xs font-black px-2.5 py-0.5 rounded-md uppercase tracking-wider ${
-                    docType === 'BILL'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-emerald-100 text-emerald-800'
-                  }`}
+                  className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/40 uppercase tracking-wider"
                 >
                   {docType}
                 </span>
-                <h1 className="text-lg font-bold text-slate-900">
+                <h1 className="text-lg font-black text-white tracking-wide">
                   {initialDoc?.docId || initialDoc?.DocID ? 'Edit' : 'New'}{' '}
                   {docType === 'BILL' ? 'Supplier Bill' : 'Quotation'}
                 </h1>
@@ -404,9 +461,9 @@ export const EntryFormScreen: React.FC<Props> = ({
               type="button"
               disabled={isSaving}
               onClick={() => handleSubmit(false)}
-              className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm transition cursor-pointer disabled:opacity-50"
+              className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-sm border border-white/25 transition cursor-pointer disabled:opacity-50"
             >
-              <Save className="w-4 h-4 text-slate-500" />
+              <Save className="w-4 h-4 text-blue-200" />
               <span>Save</span>
             </button>
 
@@ -414,12 +471,12 @@ export const EntryFormScreen: React.FC<Props> = ({
               type="button"
               disabled={isSaving}
               onClick={() => handleSubmit(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1F3A5F] hover:bg-[#162a45] text-white font-bold text-sm shadow-sm transition cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-sm shadow-md transition cursor-pointer disabled:opacity-50 active:scale-95"
             >
               {isSaving ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
               ) : (
-                <Printer className="w-4 h-4" />
+                <Printer className="w-4 h-4 text-slate-950" />
               )}
               <span>Save &amp; Preview</span>
             </button>
@@ -696,17 +753,9 @@ export const EntryFormScreen: React.FC<Props> = ({
                 Bill Items ({items.length})
               </h2>
               <p className="text-xs text-slate-500">
-                Type item description to see saved catalog suggestions
+                All item fields (Description, Unit, Quantity, Rate) are strictly mandatory
               </p>
             </div>
-            <button
-              type="button"
-              onClick={addItemRow}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Item</span>
-            </button>
           </div>
 
           {/* Table Container */}
@@ -728,12 +777,15 @@ export const EntryFormScreen: React.FC<Props> = ({
                 >
                   <div className="flex items-start gap-2">
                     {/* Sr badge */}
-                    <span className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0 mt-1">
+                    <span className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0 mt-5">
                       {index + 1}
                     </span>
 
                     {/* Description field with suggestions */}
                     <div className="flex-1 relative">
+                      <label className="text-[10px] font-bold uppercase text-slate-500 block mb-1">
+                        Description <span className="text-rose-500">*</span>
+                      </label>
                       <input
                         type="text"
                         value={item.description}
@@ -762,8 +814,12 @@ export const EntryFormScreen: React.FC<Props> = ({
                             }
                           }
                         }}
-                        placeholder="Item description (e.g. Brake Pad Set)"
-                        className="w-full px-3 py-2 text-sm font-semibold bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1F3A5F] focus:outline-none"
+                        placeholder="Enter item description..."
+                        className={`w-full px-3 py-2 text-sm font-semibold bg-white rounded-lg focus:ring-2 focus:ring-[#1F3A5F] focus:outline-none transition ${
+                          attemptedSubmit && !String(item.description || '').trim()
+                            ? 'border-2 border-rose-400 bg-rose-50/20 ring-1 ring-rose-300'
+                            : 'border border-slate-300'
+                        }`}
                       />
 
                       {/* Catalog Suggestions Dropdown */}
@@ -799,8 +855,8 @@ export const EntryFormScreen: React.FC<Props> = ({
                       )}
                     </div>
 
-                    {/* Action Group: Delete icon & Plus icon below delete icon with corporate distinguished color */}
-                    <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
+                    {/* Action: Delete line item */}
+                    <div className="shrink-0 pt-5">
                       <button
                         type="button"
                         onClick={() => removeItemRow(index)}
@@ -810,38 +866,33 @@ export const EntryFormScreen: React.FC<Props> = ({
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={addItemRow}
-                        className="p-2 rounded-lg bg-[#0F2544] hover:bg-[#1E3A8A] text-white shadow-xs hover:shadow-md active:scale-95 transition cursor-pointer"
-                        title="Add item row"
-                        aria-label="Add line item"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
 
-                  {/* Second row of item: Unit, Qty, Rate, Tax, Amount */}
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-2 pt-2 border-t border-slate-200/60 items-center">
+                  {/* Second row of item: Unit, Qty, Rate, Tax & GST Rate, Amount */}
+                  <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 mt-2 pt-2 border-t border-slate-200/60 items-center">
                     {/* Unit */}
-                    <div>
+                    <div className="col-span-1 sm:col-span-2">
                       <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
-                        Unit
+                        Unit <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={item.unit}
                         onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
                         placeholder="Nos/Job/Set"
-                        className="w-full px-2 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none"
+                        className={`w-full px-2 py-1.5 text-xs font-medium bg-white rounded-lg focus:outline-none transition ${
+                          attemptedSubmit && !String(item.unit || '').trim()
+                            ? 'border-2 border-rose-400 bg-rose-50/20'
+                            : 'border border-slate-300'
+                        }`}
                       />
                     </div>
 
                     {/* Qty */}
-                    <div>
+                    <div className="col-span-1 sm:col-span-2">
                       <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
-                        Qty
+                        Qty <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -850,14 +901,18 @@ export const EntryFormScreen: React.FC<Props> = ({
                         value={item.qty === 0 ? '' : item.qty}
                         onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
                         placeholder="1"
-                        className="w-full px-2 py-1.5 text-xs font-bold font-mono bg-white border border-slate-300 rounded-lg focus:outline-none"
+                        className={`w-full px-2 py-1.5 text-xs font-bold font-mono bg-white rounded-lg focus:outline-none transition ${
+                          attemptedSubmit && !(Number(item.qty) > 0)
+                            ? 'border-2 border-rose-400 bg-rose-50/20'
+                            : 'border border-slate-300'
+                        }`}
                       />
                     </div>
 
                     {/* Rate */}
-                    <div>
+                    <div className="col-span-1 sm:col-span-2">
                       <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
-                        Rate (PKR)
+                        Rate (PKR) <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -866,28 +921,105 @@ export const EntryFormScreen: React.FC<Props> = ({
                         value={item.rate === 0 ? '' : item.rate}
                         onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
                         placeholder="0.00"
-                        className="w-full px-2 py-1.5 text-xs font-bold font-mono bg-white border border-slate-300 rounded-lg focus:outline-none"
+                        className={`w-full px-2 py-1.5 text-xs font-bold font-mono bg-white rounded-lg focus:outline-none transition ${
+                          attemptedSubmit && !(Number(item.rate) > 0)
+                            ? 'border-2 border-rose-400 bg-rose-50/20'
+                            : 'border border-slate-300'
+                        }`}
                       />
                     </div>
 
-                    {/* Tax Selector */}
-                    <div>
-                      <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
-                        Tax Category
-                      </label>
-                      <select
-                        value={item.tax}
-                        onChange={(e) => handleItemChange(index, 'tax', e.target.value as TaxType)}
-                        className="w-full px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none cursor-pointer"
-                      >
-                        <option value="GST">Goods (GST {gstPercent}%)</option>
-                        <option value="PST">Service (PST {pstPercent}%)</option>
-                        <option value="None">No Tax (0%)</option>
-                      </select>
+                    {/* Tax Selector & Per-Item GST Rate */}
+                    <div className="col-span-2 sm:col-span-4">
+                      {(() => {
+                        const itemGstRateNum = (item.gstRate !== undefined && item.gstRate !== null && !isNaN(Number(item.gstRate)))
+                          ? Number(item.gstRate)
+                          : gstRateDecimal;
+                        const itemGstPct = Math.round(itemGstRateNum * 100);
+                        const isPreset = [18, 10, 17, 15, 12, 5, 0].includes(itemGstPct);
+
+                        return (
+                          <div>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <label className="text-[10px] font-bold uppercase text-slate-500 block">
+                                Tax &amp; Rate
+                              </label>
+                              {item.tax === 'GST' && (
+                                <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200/60">
+                                  GST @ {itemGstPct}%
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={item.tax}
+                                onChange={(e) => {
+                                  const newTax = e.target.value as TaxType;
+                                  handleItemChange(index, 'tax', newTax);
+                                  if (newTax === 'GST' && (item.gstRate === undefined || item.gstRate === null)) {
+                                    handleItemChange(index, 'gstRate', gstRateDecimal);
+                                  }
+                                }}
+                                className="flex-1 min-w-0 px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none cursor-pointer"
+                              >
+                                <option value="GST">Goods (GST)</option>
+                                <option value="PST">Services (PST 16%)</option>
+                                <option value="None">No Tax (0%)</option>
+                              </select>
+
+                              {item.tax === 'GST' && (
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <select
+                                    value={isPreset ? String(itemGstPct) : 'custom'}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (val === 'custom') {
+                                        handleItemChange(index, 'gstRate', isPreset ? 0.08 : itemGstRateNum);
+                                      } else {
+                                        handleItemChange(index, 'gstRate', Number(val) / 100);
+                                      }
+                                    }}
+                                    className="px-2 py-1.5 text-xs font-bold bg-blue-50/80 border border-blue-300 text-blue-900 rounded-lg focus:outline-none cursor-pointer"
+                                    title="Set GST Rate for this item"
+                                  >
+                                    <option value="18">18% (Std)</option>
+                                    <option value="10">10% (Reduced)</option>
+                                    <option value="17">17%</option>
+                                    <option value="15">15%</option>
+                                    <option value="12">12%</option>
+                                    <option value="5">5%</option>
+                                    <option value="0">0% (Zero)</option>
+                                    <option value="custom">Custom</option>
+                                  </select>
+
+                                  {!isPreset && (
+                                    <div className="flex items-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        step="0.5"
+                                        value={itemGstPct}
+                                        onChange={(e) => {
+                                          const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                          handleItemChange(index, 'gstRate', val / 100);
+                                        }}
+                                        className="w-14 px-1 py-1 text-xs font-bold font-mono border border-blue-400 rounded-lg bg-white text-blue-950 focus:outline-none text-center"
+                                        placeholder="%"
+                                      />
+                                      <span className="text-[10px] font-bold text-blue-900 ml-0.5">%</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Amount (Auto calculated) */}
-                    <div className="col-span-2 sm:col-span-1 text-right">
+                    <div className="col-span-1 sm:col-span-2 text-right">
                       <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
                         Amount
                       </label>
@@ -901,15 +1033,15 @@ export const EntryFormScreen: React.FC<Props> = ({
             })}
           </div>
 
-          {/* Quick Add Row Action Aligned Below Column */}
-          <div className="flex justify-end pt-3">
+          {/* Single clean Add Item Row Action */}
+          <div className="flex justify-start pt-3 border-t border-slate-100 mt-3">
             <button
               type="button"
               onClick={addItemRow}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0F2544] hover:bg-[#1E3A8A] text-white font-bold text-xs shadow-xs hover:shadow-md transition cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2544] hover:bg-[#1E3A8A] text-white font-bold text-xs shadow-sm hover:shadow-md transition cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add Row</span>
+              <Plus className="w-4 h-4 text-emerald-400" />
+              <span>Add Item Row</span>
             </button>
           </div>
         </div>
@@ -927,47 +1059,145 @@ export const EntryFormScreen: React.FC<Props> = ({
 
           {/* Separated Tax Cards Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-3.5">
-            {/* Card 1: Federal GST Summary (Goods) */}
+            {/* Card 1: Federal GST Summary (Goods) with Custom Rate Controls */}
             <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/70 to-indigo-50/40 border border-blue-200/80 shadow-xs">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
                   Federal GST on Goods ({gstPercent}%)
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-200/80 text-blue-900">
-                  Goods
+                  Customizable Per Item &amp; Bill
                 </span>
               </div>
-              <div className="space-y-1.5 text-xs pt-1 border-t border-blue-200/50">
+
+              {/* GST Rate Selector Pill Buttons & Custom Input */}
+              <div className="mb-3 pt-1">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                    Default Bill GST Rate:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyGstRateToAllGoods(gstRateDecimal)}
+                    className="text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer"
+                    title="Apply this rate to all existing goods items"
+                  >
+                    Apply {gstPercent}% to All Goods Rows
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[18, 10, 17, 15, 12, 5, 0].map((rate) => {
+                    const isSelected = !isCustomGstInput && gstPercent === rate;
+                    return (
+                      <button
+                        key={rate}
+                        type="button"
+                        onClick={() => {
+                          setIsCustomGstInput(false);
+                          setGstRatePercent(rate);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-800 text-white shadow-2xs ring-1 ring-blue-900'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-blue-50'
+                        }`}
+                      >
+                        {rate === 18 ? '18% (Std)' : rate === 10 ? '10% (Reduced)' : `${rate}%`}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomGstInput(true)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      isCustomGstInput
+                        ? 'bg-blue-800 text-white shadow-2xs ring-1 ring-blue-900'
+                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-blue-50'
+                    }`}
+                  >
+                    Custom
+                  </button>
+
+                  {isCustomGstInput && (
+                    <div className="flex items-center gap-1 ml-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={gstRatePercent}
+                        onChange={(e) => setGstRatePercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                        className="w-16 px-2 py-1 text-xs font-bold font-mono bg-white border-2 border-blue-600 rounded-lg focus:outline-none text-blue-900 text-center"
+                        placeholder="%"
+                        autoFocus
+                      />
+                      <span className="text-xs font-bold text-slate-600">%</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 text-xs pt-2 border-t border-blue-200/50">
                 <div className="flex justify-between text-slate-600">
-                  <span>Goods Subtotal:</span>
+                  <span>Goods Subtotal (Excl. Tax):</span>
                   <span className="font-mono font-bold text-slate-900">Rs. {formatCurrency(totals.goodsSub)}</span>
                 </div>
-                <div className="flex justify-between text-blue-950 font-bold text-sm">
-                  <span>GST Payable ({gstPercent}%):</span>
+
+                {/* If mixed GST rates exist (e.g. some 10%, some 18%), display breakdown */}
+                {totals.gstBreakdown && totals.gstBreakdown.length > 1 ? (
+                  <div className="bg-white/80 rounded-xl p-2.5 border border-blue-200 space-y-1 my-1">
+                    <div className="text-[10px] font-bold text-blue-900 uppercase tracking-wide">
+                      Multi-Rate GST Breakdown:
+                    </div>
+                    {totals.gstBreakdown.map((b) => (
+                      <div key={b.ratePercent} className="flex justify-between text-[11px] text-slate-700">
+                        <span>
+                          <strong className="text-blue-900">{b.ratePercent}% GST</strong> on Rs. {formatCurrency(b.taxableAmount)}:
+                        </span>
+                        <span className="font-mono font-bold text-blue-950">Rs. {formatCurrency(b.taxAmount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="flex justify-between text-blue-950 font-bold text-sm pt-0.5">
+                  <span>Total Federal GST:</span>
                   <span className="font-mono text-blue-800">Rs. {formatCurrency(totals.gst)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Card 2: Punjab PST Summary (Services) */}
+            {/* Card 2: Punjab PST Summary (Services - Legally Fixed 16%) */}
             <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/70 to-teal-50/40 border border-emerald-200/80 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-                  Punjab PST on Services ({pstPercent}%)
+                  Punjab PST on Services (16%)
                 </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900">
-                  Services
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900 flex items-center gap-1">
+                  <Lock className="w-2.5 h-2.5" />
+                  <span>Fixed 16% (PRA)</span>
                 </span>
               </div>
-              <div className="space-y-1.5 text-xs pt-1 border-t border-emerald-200/50">
+
+              <div className="mb-3 pt-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                  Statutory Tax Rate:
+                </label>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100/70 border border-emerald-300 text-emerald-900 text-xs font-bold">
+                  <Lock className="w-3 h-3 text-emerald-700" />
+                  <span>16% (Fixed statutory rate under Punjab Sales Tax on Services)</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 text-xs pt-2 border-t border-emerald-200/50">
                 <div className="flex justify-between text-slate-600">
                   <span>Services Subtotal:</span>
                   <span className="font-mono font-bold text-slate-900">Rs. {formatCurrency(totals.serviceSub)}</span>
                 </div>
                 <div className="flex justify-between text-emerald-950 font-bold text-sm">
-                  <span>PST Payable ({pstPercent}%):</span>
+                  <span>PST Payable (16%):</span>
                   <span className="font-mono text-emerald-800">Rs. {formatCurrency(totals.pst)}</span>
                 </div>
               </div>
@@ -982,25 +1212,21 @@ export const EntryFormScreen: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Grand Total Executive Card */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white border-2 border-slate-300 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Grand Total Executive Card (Clean, NO unnecessary Add Row button) */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-[#0F2544] to-slate-900 text-white border border-slate-800 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 block">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
                 Total Bill Payable
               </span>
-              <div className="text-2xl sm:text-3xl font-black font-mono text-[#0F2544] mt-0.5">
+              <div className="text-2xl sm:text-3xl font-black font-mono text-amber-300 mt-0.5">
                 Rs. {formatCurrency(totals.grandTotal)}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={addItemRow}
-                className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4 text-slate-600" />
-                <span>Add Row</span>
-              </button>
+            <div className="text-xs text-slate-300 sm:text-right">
+              <span className="block font-medium">
+                Includes Goods GST ({totals.gstBreakdown && totals.gstBreakdown.length > 1 ? totals.gstBreakdown.map((b) => `${b.ratePercent}%`).join(', ') : `${gstPercent}%`}) &amp; Punjab PST (16%)
+              </span>
+              <span className="text-[11px] text-slate-400 font-mono">Total {items.length} line {items.length === 1 ? 'item' : 'items'} in bill</span>
             </div>
           </div>
         </div>
