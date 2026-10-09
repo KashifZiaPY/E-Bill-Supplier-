@@ -383,8 +383,12 @@ export default function App() {
       showToast(`${docType} #${docNo} deleted successfully. Numbering rolled back (LIFO).`, 'success');
     } catch (err: any) {
       console.error('Error during deleteDoc sync with Google Sheet:', err);
-      // Keep document removed locally and notify user if Google Sheet sync had a temporary issue
-      showToast(`${docType} #${docNo} deleted locally. Note: Google Sheet sync offline.`, 'info');
+      if (gasApi.getIsOfflineMode()) {
+        showToast(`Offline — ${docType} #${docNo} was NOT deleted and will reappear on reconnect.`, 'error');
+      } else {
+        showToast(err.message || `Could not delete ${docType} #${docNo}.`, 'error');
+      }
+      await loadBootstrapData(); // restore the truthful register state
     }
   };
 

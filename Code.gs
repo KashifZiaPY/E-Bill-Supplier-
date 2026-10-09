@@ -67,6 +67,10 @@ function doPost(e) {
         var deleteResult = handleDeleteDoc(ss, payload);
         return createJsonResponse({ ok: true, data: deleteResult });
 
+      case 'cancelDoc':
+        var cancelResult = handleCancelDoc(ss, payload);
+        return createJsonResponse({ ok: true, data: cancelResult });
+
       case 'saveClient':
         var clientResult = handleSaveClient(ss, payload);
         return createJsonResponse({ ok: true, data: clientResult });
@@ -94,7 +98,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.0',
+    version: '2.6.1',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -218,6 +222,25 @@ function handleSaveDoc(ss, payload) {
  * Permanently deletes a document from Google Sheets (LIFO Protocol)
  * Removes row from Documents, removes items from Items, and rolls back sequence number.
  */
+/**
+ * Soft-void: marks a document Cancelled in the register (audit trail kept).
+ * Unlike LIFO delete, numbering is NOT rolled back.
+ */
+function handleCancelDoc(ss, payload) {
+  var targetDocId = String(payload.docId || '').trim();
+  if (!targetDocId) throw new Error('docId is required to cancel a document.');
+  var docsSheet = ss.getSheetByName('Documents');
+  if (!docsSheet) throw new Error('Documents sheet not found.');
+  var docsData = docsSheet.getDataRange().getValues();
+  for (var i = docsData.length - 1; i >= 1; i--) {
+    if (String(docsData[i][0] || '').trim() === targetDocId) {
+      docsSheet.getRange(i + 1, 19).setValue('Cancelled'); // Status column
+      return { ok: true, docId: targetDocId };
+    }
+  }
+  throw new Error('Document not found in register: ' + targetDocId);
+}
+
 function handleDeleteDoc(ss, payload) {
   var targetDocId = String(payload.docId || '').trim();
   var targetDocNo = String(payload.docNo || '').trim();

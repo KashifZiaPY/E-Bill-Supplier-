@@ -632,6 +632,38 @@ class GasClient {
     return this.offlineReason || '';
   }
 
+  /**
+   * Single choke point for entering offline mode. Cached data is never again
+   * presented as live: every fallback path records WHY it fell back.
+   */
+  private enterOfflineMode(reason: string): void {
+    this.offlineReason = reason || 'The Google Sheet could not be reached.';
+    this.setIsOfflineMode(true);
+  }
+
+  /** True when a failed backend call looks like connectivity/config trouble rather than a business-rule rejection. */
+  private isConnectivityError(err: any): boolean {
+    const msg = String(err?.message || err || '');
+    return /not configured|failed to fetch|network|load failed|timeout|econn|enotfound|socket|offline/i.test(msg);
+  }
+
+  /**
+   * Honest mutation wrapper. Connectivity trouble -> enter offline mode and throw
+   * a clear message (never a fake local success). A backend business-rule
+   * rejection (duplicate, validation, LIFO violation) -> thrown as-is.
+   */
+  private async mutateOrThrow(action: string, payload: any, offlineMsg: string): Promise<any> {
+    try {
+      return await this.callGas(action, payload);
+    } catch (err: any) {
+      if (this.isConnectivityError(err)) {
+        this.enterOfflineMode(String(err?.message || 'Could not reach the Google Sheet.'));
+        throw new Error(offlineMsg);
+      }
+      throw err;
+    }
+  }
+
   private async callGas(action: string, payload: any = {}): Promise<any> {
     const pin = this.getPin();
     const gasUrl = this.getGasUrl();
@@ -664,8 +696,7 @@ class GasClient {
 
     if (data && data.notConfigured) {
       if (action === 'bootstrap') {
-        this.offlineReason = 'Google Sheet URL is not configured for this browser. Paste your Apps Script Web App URL in Settings → Google Sheets Sync, or set VITE_GAS_URL in Vercel.';
-        this.setIsOfflineMode(true);
+        this.enterOfflineMode('Google Sheet URL is not configured for this browser. Paste your Apps Script Web App URL in Settings → Google Sheets Sync, or set VITE_GAS_URL in Vercel.');
         return this.localCall(action, payload);
       }
       throw new Error(
@@ -677,8 +708,7 @@ class GasClient {
       const errMsg = data.error || `Google Apps Script returned an error (HTTP ${response.status})`;
       if (action === 'bootstrap') {
         console.warn('Bootstrap API error, using local cache:', errMsg);
-        this.offlineReason = errMsg;
-        this.setIsOfflineMode(true);
+        this.enterOfflineMode(errMsg);
         return this.localCall(action, payload);
       }
       throw new Error(errMsg);
@@ -1015,8 +1045,11 @@ class GasClient {
         return { settings, clients, docs, catalog };
       }
       return this.localCall('bootstrap', {});
-    } catch (err) {
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (/incorrect pin/i.test(msg)) throw err; // wrong PIN -> App forces re-login, never stale data
       console.warn('Bootstrap failed, falling back to local cache:', err);
+      this.enterOfflineMode(msg || 'Could not reach the Google Sheet backend.');
       return this.localCall('bootstrap', {});
     }
   }
@@ -1120,15 +1153,13 @@ class GasClient {
       Items: normalizedItems,
     };
 
-    let backendResult: any;
-    try {
-      // Backend contract (Code.gs handleSaveDoc) reads payload.docData.
-      // Sending any other key silently produces a blank record, so keep this exact.
-      backendResult = await this.callGas('saveDoc', { docData: normalizedDoc });
-    } catch (err) {
-      console.warn('Backend saveDoc call failed or offline, saving locally:', err);
-      return this.localCall('saveDoc', { doc: normalizedDoc });
-    }
+    // Backend contract (Code.gs handleSaveDoc) reads payload.docData.
+    // Sending any other key silently produces a blank record, so keep this exact.
+    const backendResult: any = await this.mutateOrThrow(
+      'saveDoc',
+      { docData: normalizedDoc },
+      "You're offline \u2014 the document was NOT saved to your Google Sheet. Reconnect and try again."
+    );
 
     // Always update local cache on successful save
     this.localCall('saveDoc', {
@@ -1143,40 +1174,39 @@ class GasClient {
   }
 
   async cancelDoc(docId: string): Promise<{ ok: boolean }> {
-    try {
-      await this.callGas('cancelDoc', { docId });
-    } catch {
-      // ignore
-    }
+    await this.mutateOrThrow(
+      'cancelDoc',
+      { docId },
+      "You're offline \u2014 the document was NOT cancelled. Reconnect and try again."
+    );
     return this.localCall('cancelDoc', { docId });
   }
 
   async saveSettings(settings: SupplierSettings): Promise<{ ok: boolean }> {
-    try {
-      await this.callGas('saveSettings', { settings });
-    } catch {
-      // ignore
-    }
+    await this.mutateOrThrow(
+      'saveSettings',
+      { settings },
+      "You're offline \u2014 settings were NOT saved. Reconnect and try again."
+    );
     return this.localCall('saveSettings', { settings });
   }
 
   async saveClient(client: SavedClient): Promise<{ ok: boolean; client?: SavedClient }> {
     const norm = normalizeSingleClient(client) || client;
-    try {
-      // Try calling backend GAS if supported
-      await this.callGas('saveClient', { client: norm });
-    } catch {
-      // Backend may not have explicit saveClient action, which is normal
-    }
+    await this.mutateOrThrow(
+      'saveClient',
+      { client: norm },
+      "You're offline \u2014 the client was NOT saved. Reconnect and try again."
+    );
     return this.localCall('saveClient', { client: norm });
   }
 
   async deleteClient(clientId: string, clientName?: string): Promise<{ ok: boolean }> {
-    try {
-      await this.callGas('deleteClient', { clientId, clientName });
-    } catch {
-      // ignore
-    }
+    await this.mutateOrThrow(
+      'deleteClient',
+      { clientId, clientName },
+      "You're offline \u2014 the client was NOT deleted. Reconnect and try again."
+    );
     return this.localCall('deleteClient', { clientId, clientName });
   }
 
@@ -1195,12 +1225,14 @@ class GasClient {
     settings?: SupplierSettings;
     rolledBackNextNo?: string;
   }> {
+    await this.mutateOrThrow(
+      'deleteDoc',
+      { docId, docType, docNo, firmId },
+      "You're offline \u2014 the document was NOT deleted from your sheet. Reconnect and try again."
+    );
+    // Tombstone only after the backend confirms: a failed delete must never
+    // hide a document that still exists in the register.
     recordDeletedDocKey(docId, docNo, docType, firmId);
-    try {
-      await this.callGas('deleteDoc', { docId, docType, docNo, firmId });
-    } catch {
-      // offline or unsupported in backend GAS
-    }
     return this.localCall('deleteDoc', { docId, docType, docNo, firmId });
   }
 
@@ -1314,19 +1346,34 @@ class GasClient {
     }
   }
 
+  /**
+   * Verifies the PIN against the live backend (server enforces APP_PIN when set).
+   * A wrong PIN is rejected even if the sheet is unreachable for other reasons —
+   * the old implementation accepted ANY pin because bootstrap() swallowed the 401.
+   */
   async verifyPin(pin: string): Promise<boolean> {
+    const prevPin = this.getPin();
     try {
       this.setPin(pin);
-      await this.bootstrap();
+      await this.callGas('ping', {}); // throws on 401 Incorrect PIN; never swallowed
+      this.setIsOfflineMode(false);
+      this.offlineReason = '';
       return true;
     } catch (err: any) {
-      if (err.message && err.message.includes('Incorrect PIN')) {
-        this.clearPin();
+      const msg = String(err?.message || '');
+      if (/incorrect pin/i.test(msg)) {
+        // Wrong PIN: restore previous device state and reject.
+        if (prevPin) this.setPin(prevPin); else this.clearPin();
         return false;
       }
-      if (pin && pin.length >= 4) {
-        return true;
+      // Backend unreachable: device-local gate. Accept when it matches the
+      // previously saved PIN, or on first-ever setup (no PIN stored yet).
+      if (prevPin) {
+        if (pin === prevPin) { this.setPin(pin); return true; }
+        this.setPin(prevPin);
+        return false;
       }
+      if (pin && pin.length >= 4) { this.setPin(pin); return true; }
       return false;
     }
   }

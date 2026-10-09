@@ -84,6 +84,10 @@ function doPost(e) {
         var deleteResult = handleDeleteDoc(ss, payload);
         return createJsonResponse({ ok: true, data: deleteResult });
 
+      case 'cancelDoc':
+        var cancelResult = handleCancelDoc(ss, payload);
+        return createJsonResponse({ ok: true, data: cancelResult });
+
       case 'saveClient':
         var clientResult = handleSaveClient(ss, payload);
         return createJsonResponse({ ok: true, data: clientResult });
@@ -111,7 +115,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.0',
+    version: '2.6.1',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -235,6 +239,25 @@ function handleSaveDoc(ss, payload) {
  * Permanently deletes a document from Google Sheets (LIFO Protocol)
  * Removes row from Documents, removes items from Items, and rolls back sequence number.
  */
+/**
+ * Soft-void: marks a document Cancelled in the register (audit trail kept).
+ * Unlike LIFO delete, numbering is NOT rolled back.
+ */
+function handleCancelDoc(ss, payload) {
+  var targetDocId = String(payload.docId || '').trim();
+  if (!targetDocId) throw new Error('docId is required to cancel a document.');
+  var docsSheet = ss.getSheetByName('Documents');
+  if (!docsSheet) throw new Error('Documents sheet not found.');
+  var docsData = docsSheet.getDataRange().getValues();
+  for (var i = docsData.length - 1; i >= 1; i--) {
+    if (String(docsData[i][0] || '').trim() === targetDocId) {
+      docsSheet.getRange(i + 1, 19).setValue('Cancelled'); // Status column
+      return { ok: true, docId: targetDocId };
+    }
+  }
+  throw new Error('Document not found in register: ' + targetDocId);
+}
+
 function handleDeleteDoc(ss, payload) {
   var targetDocId = String(payload.docId || '').trim();
   var targetDocNo = String(payload.docNo || '').trim();
@@ -738,6 +761,7 @@ function createJsonResponse(dataObj, statusCode) {
   output.setMimeType(ContentService.MimeType.JSON);
   return output;
 }
+
 `;
 
 export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
@@ -775,7 +799,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.1 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing
