@@ -45,6 +45,7 @@ export interface FirmProfile {
   letterheadBottom: number; // default 1.5
   nextBillNo: string; // e.g. "101"
   nextQuoteNo: string; // e.g. "Q-201"
+  styleTheme?: 'CLASSIC_GOVT' | 'MODERN_CORPORATE'; // Layout & typography style
 }
 
 export interface DocumentRecord {

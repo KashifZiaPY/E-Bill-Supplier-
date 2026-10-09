@@ -40,15 +40,30 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
   const pst = (doc.pst && doc.pst > 0) ? doc.pst : (doc.PST && doc.PST > 0) ? doc.PST : computed.pst;
   const grandTotal = (doc.grandTotal && doc.grandTotal > 0) ? doc.grandTotal : (doc.GrandTotal && doc.GrandTotal > 0) ? doc.GrandTotal : computed.grandTotal;
 
-  const firmName = doc.firmName || settings.supplierName || 'ANWAR TRADERS';
+  // Identify firm and styling personality
+  const firmObj = settings.firms?.find((f) => f.id === doc.firmId) ||
+    settings.firms?.find((f) => f.name?.toLowerCase().trim() === (doc.firmName || '').toLowerCase().trim());
+  const isHashirStyle = doc.firmId === 'firm-hashir-traders' ||
+    (doc.firmName || '').toLowerCase().includes('hashir') ||
+    firmObj?.styleTheme === 'MODERN_CORPORATE';
+
+  const firmName = doc.firmName || firmObj?.name || settings.supplierName || 'ANWAR TRADERS';
+  const firmTagline = firmObj?.tagline || settings.supplierTagline || (isHashirStyle ? 'Govt Order Suppliers & Mechanical/Civil Contractors' : 'General Order Suppliers & Govt Contractors');
+  const firmAddress = firmObj?.address || settings.supplierAddress;
+  const firmPhone = firmObj?.phone || settings.supplierPhone;
+  const firmNTN = firmObj?.ntn || settings.supplierNTN;
+  const firmGST = firmObj?.gst || settings.supplierGST;
+  const firmVendor = firmObj?.vendorNo || settings.vendorNo;
+
   const docNo = doc.docNo || doc.DocNo || '—';
   const docDate = formatDateDisplay(doc.date || doc.Date);
-  const validUntil = doc.validUntil || doc.ValidUntil ? formatDateDisplay(doc.validUntil || doc.ValidUntil) : null;
+  const validUntil = doc.validUntil || doc.ValidUntil ? formatDateDisplay(doc.validUntil || doc.ValidUntil) : '';
   const clientName = doc.clientName || doc.ClientName || 'Client';
   const clientAddress = doc.clientAddress || doc.ClientAddress || '';
   const clientNTN = doc.clientNTN || doc.ClientNTN || '';
   const refText = doc.refText || doc.RefText || '';
 
+  // Build sequential list with continuous Sr.# and section headers if grouped
   const goodsItems = rawItems.filter((i) => i.tax === 'GST' || (i as any).Tax === 'GST');
   const serviceItems = rawItems.filter((i) => i.tax === 'PST' || (i as any).Tax === 'PST');
   const otherItems = rawItems.filter((i) => i.tax === 'None' || (i as any).Tax === 'None' || (!i.tax && !(i as any).Tax));
@@ -107,7 +122,7 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
         sequentialItems.push({
           sr: srCounter++,
           sectionHeader: idx === 0
-            ? (isUniformGoodsRate ? `A. ESTIMATED GOODS (GST @ ${uniformRate}%)` : `A. ESTIMATED GOODS (GST)`)
+            ? (isUniformGoodsRate ? `A. GOODS (General Sales Tax - GST @ ${uniformRate}%)` : `A. GOODS (General Sales Tax - GST)`)
             : undefined,
           description: descText,
           unit: String(it.unit || (it as any).Unit || 'Nos'),
@@ -125,7 +140,7 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
         const r = Number(it.rate ?? (it as any).Rate ?? 0);
         sequentialItems.push({
           sr: srCounter++,
-          sectionHeader: idx === 0 ? `B. ESTIMATED SERVICES / WORK (PST @ ${pstPercent}%)` : undefined,
+          sectionHeader: idx === 0 ? `B. SERVICES / LABOUR (Punjab Sales Tax - PST @ ${pstPercent}%)` : undefined,
           description: String(it.description || (it as any).Description || ''),
           unit: String(it.unit || (it as any).Unit || 'Job'),
           qty: q,
@@ -142,7 +157,7 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
         const r = Number(it.rate ?? (it as any).Rate ?? 0);
         sequentialItems.push({
           sr: srCounter++,
-          sectionHeader: idx === 0 ? 'C. NON-TAXABLE / OTHER ITEMS' : undefined,
+          sectionHeader: idx === 0 ? 'C. EXEMPT / NON-TAXABLE SUPPLIES' : undefined,
           description: String(it.description || (it as any).Description || ''),
           unit: String(it.unit || (it as any).Unit || 'Nos'),
           qty: q,
@@ -154,7 +169,6 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
     }
   }
 
-  // Intelligent multi-page pagination for Quotation
   const pageChunks: ItemRowWithSr[][] = [];
   if (sequentialItems.length <= 8) {
     pageChunks.push(sequentialItems);
@@ -175,7 +189,11 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
   const totalPages = pageChunks.length;
 
   return (
-    <div className="quotation-sheet-wrapper w-full mx-auto font-sans text-black text-[10.5pt] leading-normal">
+    <div
+      className={`quotation-sheet-wrapper w-full mx-auto text-black text-[10.5pt] leading-normal ${
+        isHashirStyle ? 'font-sans' : 'font-serif'
+      }`}
+    >
       {pageChunks.map((chunk, pageIndex) => {
         const isFirstPage = pageIndex === 0;
         const isLastPage = pageIndex === totalPages - 1;
@@ -191,70 +209,177 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
             {/* Page 1 Full Header OR Subsequent Pages Running Header */}
             {isFirstPage ? (
               <>
-                {!printOnLetterhead && (
-                  <div className="border-b-2 border-black pb-2 mb-2.5 text-center">
-                    <h1 className="text-2xl font-black uppercase tracking-wide text-black">{firmName}</h1>
-                    <p className="text-xs font-semibold text-gray-700 tracking-wider uppercase">{settings.supplierTagline}</p>
-                    <p className="text-xs text-gray-800 mt-0.5">{settings.supplierAddress}</p>
-                    <div className="flex flex-wrap justify-center gap-x-4 text-xs font-semibold text-gray-900 mt-1">
-                      <span>Ph: {settings.supplierPhone}</span>
-                      <span>NTN: {settings.supplierNTN}</span>
-                      <span>GST No: {settings.supplierGST}</span>
-                      {settings.vendorNo && <span>Vendor No: {settings.vendorNo}</span>}
-                    </div>
-                  </div>
-                )}
+                {/* 1. HASHIR TRADERS: Modern Split Corporate Style */}
+                {isHashirStyle ? (
+                  <>
+                    {!printOnLetterhead && (
+                      <div className="border-b-2 border-slate-900 pb-3 mb-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2.5 mb-1">
+                            <div className="w-10 h-10 rounded-lg bg-slate-900 text-white font-black text-base flex items-center justify-center font-sans tracking-tight shrink-0 shadow-sm">
+                              HT
+                            </div>
+                            <div>
+                              <h1 className="text-2xl font-black tracking-tight text-slate-950 uppercase font-sans">
+                                {firmName}
+                              </h1>
+                              <p className="text-[10px] font-bold text-slate-600 tracking-wider uppercase">
+                                {firmTagline}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-[9.5pt] text-slate-700 mt-1">{firmAddress}</p>
+                          <div className="flex flex-wrap items-center gap-x-3 text-[9pt] font-semibold text-slate-900 mt-1">
+                            <span>Ph: {firmPhone}</span>
+                            <span>NTN: {firmNTN}</span>
+                            <span>GST: {firmGST}</span>
+                            {firmVendor && <span>Vendor: {firmVendor}</span>}
+                          </div>
+                        </div>
 
-                {/* Quotation Title & Meta Info */}
-                <div className="flex justify-between items-baseline border-b border-black pb-1.5 mb-2.5">
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-2xl font-black uppercase tracking-wider text-black">QUOTATION</span>
-                  </div>
-                  <div className="text-right text-[10pt] space-y-0.5">
-                    <div>
-                      <span className="font-bold">Quotation No: </span>
-                      <span className="font-bold font-mono px-2 py-0.5 bg-white border border-black rounded">
-                        {docNo}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="font-bold">Date: </span>
-                      <span className="font-semibold">{docDate}</span>
-                    </div>
-                    {validUntil && (
-                      <div>
-                        <span className="font-bold">Valid Until: </span>
-                        <span className="font-semibold">{validUntil}</span>
+                        <div className="text-right sm:w-56 shrink-0 bg-slate-50 border border-slate-300 rounded-xl p-2.5">
+                          <span className="inline-block text-[9px] font-black uppercase tracking-wider bg-amber-600 text-white px-2 py-0.5 rounded">
+                            RATE ESTIMATE / QUOTATION
+                          </span>
+                          <div className="mt-1">
+                            <span className="text-[9.5pt] font-bold text-slate-500 block">Quote Number</span>
+                            <span className="font-mono font-black text-lg text-slate-950 block">
+                              #{docNo}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-xs space-y-0.5">
+                            <div>
+                              <span className="text-slate-500 font-semibold">Date: </span>
+                              <span className="font-bold text-slate-800">{docDate}</span>
+                            </div>
+                            {validUntil && (
+                              <div>
+                                <span className="text-slate-500 font-semibold">Valid Till: </span>
+                                <span className="font-bold text-slate-800">{validUntil}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     )}
-                  </div>
-                </div>
 
-                {/* Client & Reference Block */}
-                <div className="mb-2.5 space-y-1 text-[10pt] border border-black p-2 rounded bg-white">
-                  <div className="flex items-start">
-                    <span className="font-bold w-16 shrink-0">Name:</span>
-                    <span className="font-semibold text-black">
-                      M/s {clientName}
-                      {clientAddress ? `, ${clientAddress}` : ''}
-                    </span>
-                  </div>
-                  {clientNTN && (
-                    <div className="flex items-start">
-                      <span className="font-bold w-16 shrink-0">NTN:</span>
-                      <span className="font-mono">{clientNTN}</span>
+                    {printOnLetterhead && (
+                      <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2 mb-3">
+                        <span className="text-sm font-black uppercase tracking-widest text-slate-900">
+                          PRICE QUOTATION / RATE ESTIMATE
+                        </span>
+                        <div className="text-right font-mono text-sm font-bold">
+                          <span>QUOTE #{docNo} · {docDate}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mb-3 p-3 rounded-xl border border-slate-300 bg-slate-50/80 text-[10pt] border-l-4 border-l-slate-900">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="sm:col-span-2">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">
+                            PROPOSAL SUBMITTED TO (CLIENT)
+                          </span>
+                          <div className="font-black text-slate-950 text-[11pt]">
+                            M/s {clientName}
+                          </div>
+                          {clientAddress && (
+                            <p className="text-slate-700 text-[9.5pt] mt-0.5">{clientAddress}</p>
+                          )}
+                        </div>
+                        <div className="text-left sm:text-right space-y-0.5">
+                          {clientNTN && (
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-500 block">CLIENT NTN</span>
+                              <span className="font-mono font-bold text-slate-900 text-xs bg-white px-1.5 py-0.5 rounded border border-slate-200 inline-block">
+                                {clientNTN}
+                              </span>
+                            </div>
+                          )}
+                          {refText && (
+                            <div className="pt-1">
+                              <span className="text-[9px] font-bold text-slate-500 block">ENQUIRY / TENDER REF</span>
+                              <span className="text-xs font-semibold text-slate-900 block truncate" title={refText}>
+                                {refText}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  {refText && (
-                    <div className="flex items-start">
-                      <span className="font-bold w-16 shrink-0">Ref:</span>
-                      <span className="font-medium text-gray-900">{refText}</span>
+                  </>
+                ) : (
+                  /* 2. ANWAR TRADERS: Classic Government Style Quotation Header */
+                  <>
+                    {!printOnLetterhead && (
+                      <div className="border-b-2 border-double border-black pb-2 mb-2.5 text-center">
+                        <h1 className="text-2xl font-black uppercase tracking-widest text-black font-serif">
+                          {firmName}
+                        </h1>
+                        <p className="text-xs font-bold text-gray-800 tracking-wider uppercase font-serif mt-0.5">
+                          {firmTagline}
+                        </p>
+                        <p className="text-xs text-gray-800 mt-0.5">{firmAddress}</p>
+                        <div className="flex flex-wrap justify-center gap-x-4 text-xs font-semibold text-gray-900 mt-1">
+                          <span>Ph: {firmPhone}</span>
+                          <span>NTN: {firmNTN}</span>
+                          <span>GST No: {firmGST}</span>
+                          {firmVendor && <span>Vendor No: {firmVendor}</span>}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-baseline border-b border-black pb-1.5 mb-2.5">
+                      <div className="flex items-baseline gap-3">
+                        <span className="text-2xl font-black uppercase tracking-wider text-black font-serif">
+                          QUOTATION
+                        </span>
+                      </div>
+                      <div className="text-right text-[10pt] space-y-0.5">
+                        <div>
+                          <span className="font-bold">Quotation No: </span>
+                          <span className="font-bold font-mono px-2 py-0.5 bg-white border border-black rounded">
+                            {docNo}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-bold">Date: </span>
+                          <span className="font-semibold">{docDate}</span>
+                        </div>
+                        {validUntil && (
+                          <div>
+                            <span className="font-bold">Valid Until: </span>
+                            <span className="font-semibold">{validUntil}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    <div className="mb-2.5 space-y-1 text-[10pt] border border-black p-2.5 rounded bg-white">
+                      <div className="flex items-start">
+                        <span className="font-bold w-16 shrink-0">Name:</span>
+                        <span className="font-semibold text-black">
+                          M/s {clientName}
+                          {clientAddress ? `, ${clientAddress}` : ''}
+                        </span>
+                      </div>
+                      {clientNTN && (
+                        <div className="flex items-start">
+                          <span className="font-bold w-16 shrink-0">NTN:</span>
+                          <span className="font-mono">{clientNTN}</span>
+                        </div>
+                      )}
+                      {refText && (
+                        <div className="flex items-start">
+                          <span className="font-bold w-16 shrink-0">Ref:</span>
+                          <span className="font-medium text-gray-900">{refText}</span>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             ) : (
-              /* Subsequent Pages Running Header */
               <div className="flex justify-between items-center border-b-2 border-black pb-1.5 mb-2.5 pt-1">
                 <div>
                   <span className="font-black text-sm uppercase tracking-wide">
@@ -268,52 +393,79 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
               </div>
             )}
 
-            {/* Items Table for this page */}
-            <table className="w-full border-collapse border border-black text-[10pt] mb-2 bg-white">
+            {/* Items Table */}
+            <table className={`w-full border-collapse text-[10pt] mb-2 bg-white ${
+              isHashirStyle ? 'border border-slate-400' : 'border border-black'
+            }`}>
               <thead>
-                <tr className="bg-white border-b-2 border-black text-center font-bold">
-                  <th className="border-r border-black py-1 px-2 w-12">Sr.#</th>
-                  <th className="border-r border-black py-1 px-2 text-left">Description</th>
-                  <th className="border-r border-black py-1 px-2 w-24">Qty</th>
-                  <th className="border-r border-black py-1 px-2 w-24 text-right">Rate</th>
-                  <th className="py-1 px-2 w-28 text-right">Amount</th>
+                <tr className={`${
+                  isHashirStyle
+                    ? 'bg-slate-900 text-white font-bold text-center text-[9.5pt] uppercase tracking-wider'
+                    : 'bg-white border-b-2 border-black text-center font-bold font-serif'
+                }`}>
+                  <th className={`py-1.5 px-2 w-12 ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Sr.#</th>
+                  <th className={`py-1.5 px-2 text-left ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Description of Supplies / Services</th>
+                  <th className={`py-1.5 px-2 w-24 ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Qty</th>
+                  <th className={`py-1.5 px-2 w-24 text-right ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Rate (Rs.)</th>
+                  <th className="py-1.5 px-2 w-28 text-right">Amount (Rs.)</th>
                 </tr>
               </thead>
               <tbody>
-                {chunk.map((it, idx) => (
-                  <React.Fragment key={it.sr}>
-                    {it.sectionHeader && (
-                      <tr className="bg-white border-t border-b border-black font-bold text-xs uppercase tracking-wide">
-                        <td colSpan={5} className="py-1 px-2 text-black">
-                          {it.sectionHeader}
+                {chunk.map((it, idx) => {
+                  return (
+                    <React.Fragment key={it.sr}>
+                      {it.sectionHeader && (
+                        <tr className={`${
+                          isHashirStyle
+                            ? 'bg-slate-100 border-t border-b border-slate-300 font-bold text-xs uppercase tracking-wide text-slate-900'
+                            : 'bg-white border-t border-b border-black font-bold text-xs uppercase tracking-wide text-black'
+                        }`}>
+                          <td colSpan={5} className="py-1.5 px-2.5">
+                            {it.sectionHeader}
+                          </td>
+                        </tr>
+                      )}
+                      <tr className={`border-b ${isHashirStyle ? 'border-slate-300' : 'border-gray-400'} ${
+                        idx % 2 === 1 ? (isHashirStyle ? 'bg-slate-50/70' : 'bg-gray-100/90') : 'bg-white'
+                      }`}>
+                        <td className={`text-center py-1.5 px-1.5 font-mono font-bold text-xs ${
+                          isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
+                        }`}>
+                          {it.sr}
+                        </td>
+                        <td className={`text-left py-1.5 px-2 font-medium ${
+                          isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
+                        }`}>
+                          {it.description}
+                        </td>
+                        <td className={`text-center py-1.5 px-1.5 whitespace-nowrap ${
+                          isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
+                        }`}>
+                          {it.qty} {it.unit}
+                        </td>
+                        <td className={`text-right py-1.5 px-2 whitespace-nowrap font-mono ${
+                          isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
+                        }`}>
+                          {formatCurrency(it.rate)}
+                        </td>
+                        <td className="text-right py-1.5 px-2 font-bold whitespace-nowrap font-mono">
+                          {formatCurrency(it.amount)}
                         </td>
                       </tr>
-                    )}
-                    {/* Print-friendly subtle alternating row shading */}
-                    <tr className={`border-b border-gray-400 ${idx % 2 === 1 ? 'bg-gray-100/90 print:bg-gray-100' : 'bg-white'}`}>
-                      <td className="border-r border-black text-center py-1 px-1.5 font-mono font-bold text-xs">{it.sr}</td>
-                      <td className="border-r border-black text-left py-1 px-2 font-medium">{it.description}</td>
-                      <td className="border-r border-black text-center py-1 px-1.5 whitespace-nowrap">
-                        {it.qty} {it.unit}
-                      </td>
-                      <td className="border-r border-black text-right py-1 px-2 whitespace-nowrap font-mono">
-                        {formatCurrency(it.rate)}
-                      </td>
-                      <td className="text-right py-1 px-2 font-bold whitespace-nowrap font-mono">
-                        {formatCurrency(it.amount)}
-                      </td>
-                    </tr>
-                  </React.Fragment>
-                ))}
+                    </React.Fragment>
+                  );
+                })}
 
                 {/* Subtotals & Grand Totals only on the LAST page */}
                 {isLastPage && (
                   <>
                     {goodsSub > 0 && (
                       <>
-                        <tr className="border-t-2 border-black bg-gray-100/90 print:bg-gray-100 text-[10pt]">
-                          <td colSpan={4} className="border-r border-black text-right py-1.5 px-2.5 font-bold text-gray-900">
-                            Sub Total (Estimated Goods):
+                        <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                          <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                          }`}>
+                            Sub Total (Goods):
                           </td>
                           <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
                             {formatCurrency(goodsSub)}
@@ -322,8 +474,10 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
                         {computed.gstBreakdown && computed.gstBreakdown.length > 1 ? (
                           <>
                             {computed.gstBreakdown.map((b) => (
-                              <tr key={b.ratePercent} className="border-b border-gray-400 bg-gray-100/70 print:bg-gray-100 text-[9.5pt]">
-                                <td colSpan={4} className="border-r border-black text-right py-1 px-2.5 font-semibold text-gray-800">
+                              <tr key={b.ratePercent} className={`border-b ${isHashirStyle ? 'border-slate-300 bg-slate-50' : 'border-gray-400 bg-gray-100/70'} text-[9.5pt]`}>
+                                <td colSpan={4} className={`text-right py-1 px-2.5 font-semibold ${
+                                  isHashirStyle ? 'border-r border-slate-300 text-slate-800' : 'border-r border-black text-gray-800'
+                                }`}>
                                   GST @ {b.ratePercent}% (on Rs. {formatCurrency(b.taxableAmount)}):
                                 </td>
                                 <td className="text-right py-1 px-2.5 font-semibold whitespace-nowrap font-mono text-black">
@@ -331,8 +485,10 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
                                 </td>
                               </tr>
                             ))}
-                            <tr className="border-b border-black bg-gray-100/90 print:bg-gray-100 text-[10pt]">
-                              <td colSpan={4} className="border-r border-black text-right py-1.5 px-2.5 font-bold text-gray-900">
+                            <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                              <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+                                isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                              }`}>
                                 Total GST on Goods:
                               </td>
                               <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
@@ -341,8 +497,10 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
                             </tr>
                           </>
                         ) : (
-                          <tr className="border-b border-black bg-gray-100/90 print:bg-gray-100 text-[10pt]">
-                            <td colSpan={4} className="border-r border-black text-right py-1.5 px-2.5 font-bold text-gray-900">
+                          <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                            <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+                              isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                            }`}>
                               {(computed.gstBreakdown?.[0]?.ratePercent ?? (isUniformGoodsRate ? uniformRate : gstPercent))}% GST on Goods:
                             </td>
                             <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
@@ -355,16 +513,20 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
 
                     {serviceSub > 0 && (
                       <>
-                        <tr className="border-t border-black bg-gray-100/90 print:bg-gray-100 text-[10pt]">
-                          <td colSpan={4} className="border-r border-black text-right py-1.5 px-2.5 font-bold text-gray-900">
-                            Sub Total (Estimated Services):
+                        <tr className={`border-t ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                          <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                          }`}>
+                            Sub Total (Services):
                           </td>
                           <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
                             {formatCurrency(serviceSub)}
                           </td>
                         </tr>
-                        <tr className="border-b border-black bg-gray-100/90 print:bg-gray-100 text-[10pt]">
-                          <td colSpan={4} className="border-r border-black text-right py-1.5 px-2.5 font-bold text-gray-900">
+                        <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                          <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                          }`}>
                             {pstPercent}% PST on Services:
                           </td>
                           <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
@@ -374,60 +536,95 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
                       </>
                     )}
 
-                    {/* GRAND TOTAL ROW - Prominent with Grey Highlight and Distinct Font Size/Style */}
-                    <tr className="bg-gray-200 print:bg-gray-200 border-t-2 border-black border-b-[3px] border-b-black text-[12pt] sm:text-[12.5pt] font-black">
-                      <td colSpan={4} className="border-r border-black text-right py-2.5 px-3 tracking-wider uppercase text-black font-black">
-                        ESTIMATED TOTAL (PKR):
-                      </td>
-                      <td className="text-right py-2.5 px-3 whitespace-nowrap font-mono text-[13pt] font-black text-black underline decoration-double">
-                        Rs. {formatCurrency(grandTotal)}
-                      </td>
-                    </tr>
+                    {/* ESTIMATED TOTAL ROW */}
+                    {isHashirStyle ? (
+                      <tr className="bg-slate-900 text-white border-t-2 border-slate-950 text-[12pt] font-black">
+                        <td colSpan={4} className="border-r border-slate-700 text-right py-3 px-3.5 tracking-wider uppercase">
+                          TOTAL ESTIMATED QUOTATION (PKR):
+                        </td>
+                        <td className="text-right py-3 px-3.5 whitespace-nowrap font-mono text-[13pt] font-black text-amber-300">
+                          Rs. {formatCurrency(grandTotal)}
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr className="bg-gray-200 border-t-2 border-black border-b-[3px] border-b-black text-[12pt] sm:text-[12.5pt] font-black">
+                        <td colSpan={4} className="border-r border-black text-right py-2.5 px-3 tracking-wider uppercase text-black font-black font-serif">
+                          ESTIMATED TOTAL (PKR):
+                        </td>
+                        <td className="text-right py-2.5 px-3 whitespace-nowrap font-mono text-[13pt] font-black text-black underline decoration-double">
+                          Rs. {formatCurrency(grandTotal)}
+                        </td>
+                      </tr>
+                    )}
                   </>
                 )}
               </tbody>
             </table>
 
-            {/* Continuation indicator if not last page (strictly NO page number here; page numbers appear at bottom only) */}
             {!isLastPage && (
               <div className="text-right text-xs italic font-bold text-gray-700 py-1">
                 (Continued on next sheet...)
               </div>
             )}
 
-            {/* Terms, In words, and Signatures on Last Page */}
+            {/* Terms, In words, and Signatures */}
             {isLastPage && (
               <>
-                <div className="border border-black p-2 mb-2 rounded bg-white text-[9.5pt] space-y-0.5">
+                <div className={`p-2.5 mb-2 rounded text-[9.5pt] space-y-0.5 ${
+                  isHashirStyle ? 'bg-slate-50 border border-slate-300 font-sans' : 'border border-black bg-white font-serif'
+                }`}>
                   <p className="font-bold text-black">
                     Rates are as per above. Taxes as applicable. Delivery as per PO / agreed schedule.
                   </p>
-                  <p className="text-gray-800 text-[9pt]">
+                  <p className="text-gray-700 text-[9pt]">
                     Payment terms: 100% on delivery and inspection as per government financial rules.
                   </p>
                 </div>
 
-                <div className="border border-black p-2 mb-3 rounded bg-white text-[10pt]">
+                <div className={`p-2.5 mb-3 rounded text-[10pt] ${
+                  isHashirStyle ? 'bg-slate-50 border border-slate-300 font-sans' : 'border border-black bg-white font-serif'
+                }`}>
                   <span className="font-bold">In Words: </span>
-                  <span className="font-semibold italic text-black">{numberToWordsPakistani(grandTotal)}</span>
+                  <span className="font-semibold italic text-black">
+                    {numberToWordsPakistani(grandTotal)}
+                  </span>
                 </div>
 
-                <div className="flex justify-between items-end pt-3 mt-1">
-                  <div className="text-[9pt] text-gray-600">
-                    Valid for 7 days unless specified
+                {isHashirStyle ? (
+                  <div className="flex justify-between items-end pt-3 mt-1 font-sans">
+                    <div className="text-[9pt] text-slate-500">
+                      Valid for 7 days unless specified
+                    </div>
+                    <div className="text-center w-64">
+                      <div className="border-b-2 border-slate-800 mb-1 w-full"></div>
+                      <p className="text-[10pt] font-black uppercase tracking-wider text-slate-900">
+                        For <span className="font-black">{firmName}</span>
+                      </p>
+                      <p className="text-[8.5pt] font-semibold text-slate-500 uppercase tracking-wider">
+                        Authorized Signatory / Seal
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-center w-64">
-                    <div className="border-b border-black mb-1 w-full"></div>
-                    <p className="text-[10pt] font-black uppercase tracking-wider text-black">For <span className="font-black">{firmName}</span></p>
-                    <p className="text-[8.5pt] text-gray-700">Authorised Signatory</p>
+                ) : (
+                  <div className="flex justify-between items-end pt-3 mt-1 font-serif">
+                    <div className="text-[9pt] text-gray-600">
+                      Valid for 7 days unless specified
+                    </div>
+                    <div className="text-center w-64">
+                      <div className="border-b border-black mb-1 w-full"></div>
+                      <p className="text-[10pt] font-black uppercase tracking-wider text-black">
+                        For <span className="font-black">{firmName}</span>
+                      </p>
+                      <p className="text-[8.5pt] text-gray-700">Authorised Signatory</p>
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
 
             {/* Bottom Page Footer on EVERY Sheet */}
             <div className="flex justify-between items-center border-t border-gray-300 pt-1.5 mt-3 text-[8.5pt] text-gray-600">
-              <span>Quotation No: {docNo} · {clientName}</span>
+              <span>{firmName} · Quotation #{docNo} · {clientName}</span>
               <span className="font-bold text-gray-800">
                 Page {currentPageNum} of {totalPages}
               </span>

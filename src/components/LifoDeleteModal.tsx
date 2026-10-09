@@ -43,49 +43,6 @@ export const LifoDeleteModal: React.FC<Props> = ({
     }
   }, [isOpen, doc]);
 
-  // Keyboard navigation
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen || !doc) return null;
-
-  const docType = String(doc.type || doc.Type || 'BILL').toUpperCase();
-  const docNo = String(doc.docNo || doc.DocNo || '—');
-  const clientName = String(doc.clientName || doc.ClientName || 'Client');
-  const dateStr = formatDateDisplay(doc.date || doc.Date);
-  const grandTotal = Number(doc.grandTotal ?? doc.GrandTotal ?? 0);
-  const firmName = String(doc.firmName || 'Anwar Traders');
-
-  const handleKeyPress = (digit: string) => {
-    if (pin.length < 6) {
-      const nextPin = pin + digit;
-      setPin(nextPin);
-      setErrorMsg('');
-      if (nextPin.length === 4) {
-        verifyAndProceed(nextPin);
-      }
-    }
-  };
-
-  const handleDeleteDigit = () => {
-    setPin((prev) => prev.slice(0, -1));
-    setErrorMsg('');
-  };
-
-  const handleClearPin = () => {
-    setPin('');
-    setErrorMsg('');
-    pinInputRef.current?.focus();
-  };
-
   const verifyAndProceed = async (pinToTest: string) => {
     if (pinToTest.length < 4) {
       setErrorMsg('Please enter 4-digit Security PIN.');
@@ -113,11 +70,106 @@ export const LifoDeleteModal: React.FC<Props> = ({
         return;
       }
 
-      await onConfirmDelete(doc);
+      if (doc) {
+        await onConfirmDelete(doc);
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Security PIN authorization failed.');
       setIsVerifying(false);
     }
+  };
+
+  // Full physical keyboard & num keypad event listener
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isDeleting || isVerifying) return;
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.code === 'NumpadDecimal') {
+        e.preventDefault();
+        setPin((prev) => prev.slice(0, -1));
+        setErrorMsg('');
+        return;
+      }
+
+      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+        e.preventDefault();
+        if (pin.length >= 4) {
+          verifyAndProceed(pin);
+        } else {
+          setErrorMsg('Please enter 4-digit Security PIN.');
+        }
+        return;
+      }
+
+      // Capture all numeric keys (0-9 from top row and Numpad0-Numpad9 regardless of NumLock state)
+      let digit: string | null = null;
+      if (/^[0-9]$/.test(e.key)) {
+        digit = e.key;
+      } else if (/^Numpad([0-9])$/i.test(e.code)) {
+        const match = e.code.match(/^Numpad([0-9])$/i);
+        if (match) digit = match[1];
+      } else if (/^Digit([0-9])$/i.test(e.code)) {
+        const match = e.code.match(/^Digit([0-9])$/i);
+        if (match) digit = match[1];
+      }
+
+      if (digit !== null) {
+        e.preventDefault();
+        setPin((prev) => {
+          if (prev.length >= 4) return prev;
+          const next = prev + digit;
+          setErrorMsg('');
+          if (next.length === 4) {
+            setTimeout(() => {
+              verifyAndProceed(next);
+            }, 60);
+          }
+          return next;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose, pin, isDeleting, isVerifying, doc]);
+
+  if (!isOpen || !doc) return null;
+
+  const docType = String(doc.type || doc.Type || 'BILL').toUpperCase();
+  const docNo = String(doc.docNo || doc.DocNo || '—');
+  const clientName = String(doc.clientName || doc.ClientName || 'Client');
+  const dateStr = formatDateDisplay(doc.date || doc.Date);
+  const grandTotal = Number(doc.grandTotal ?? doc.GrandTotal ?? 0);
+  const firmName = String(doc.firmName || 'Anwar Traders');
+
+  const handleKeypadPress = (digit: string) => {
+    if (pin.length < 4) {
+      const nextPin = pin + digit;
+      setPin(nextPin);
+      setErrorMsg('');
+      if (nextPin.length === 4) {
+        setTimeout(() => verifyAndProceed(nextPin), 60);
+      }
+    }
+  };
+
+  const handleDeleteDigit = () => {
+    setPin((prev) => prev.slice(0, -1));
+    setErrorMsg('');
+  };
+
+  const handleClearPin = () => {
+    setPin('');
+    setErrorMsg('');
+    pinInputRef.current?.focus();
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -127,15 +179,15 @@ export const LifoDeleteModal: React.FC<Props> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-rose-200 overflow-hidden flex flex-col my-auto max-h-[94vh] sm:max-h-[90vh]"
+        className="w-full max-w-sm sm:max-w-md bg-white rounded-2xl shadow-2xl border border-rose-200 overflow-hidden flex flex-col my-auto max-h-[92vh] sm:max-h-[88vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Compact Header */}
-        <div className="bg-gradient-to-r from-rose-900 via-rose-800 to-rose-950 px-4 py-3 sm:px-5 sm:py-3.5 text-white flex items-center justify-between shrink-0">
+        {/* Compact Fitted Header */}
+        <div className="bg-gradient-to-r from-rose-900 via-rose-800 to-rose-950 px-4 py-3 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center text-rose-200">
               <ShieldAlert className="w-5 h-5 text-rose-300" />
@@ -164,11 +216,11 @@ export const LifoDeleteModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Scrollable / Screen-fitted Body */}
+        {/* Screen-Fitted Body */}
         <div className="p-3.5 sm:p-4 space-y-2.5 overflow-y-auto">
-          {/* Target Document Compact Chip */}
+          {/* Target Document Summary Card */}
           <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200/90">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-1.5">
                 <span
                   className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
@@ -191,7 +243,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
               </span>
             </div>
 
-            <div className="flex items-baseline justify-between gap-2 text-xs pt-0.5 border-t border-rose-100">
+            <div className="flex items-baseline justify-between gap-2 text-xs pt-1 border-t border-rose-100">
               <span className="font-bold text-slate-800 truncate" title={clientName}>
                 {clientName}
               </span>
@@ -201,34 +253,34 @@ export const LifoDeleteModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Sequential LIFO Rollback Note */}
-          <div className="px-3 py-2 rounded-xl bg-blue-50/80 border border-blue-200 text-[11px] text-blue-950 flex items-center gap-2">
+          {/* Sequential LIFO Rollback Notice */}
+          <div className="px-3 py-1.5 rounded-xl bg-blue-50/80 border border-blue-200 text-[11px] text-blue-950 flex items-center gap-2">
             <RotateCcw className="w-3.5 h-3.5 text-blue-700 shrink-0" />
             <span className="leading-snug">
-              <strong>LIFO Rule:</strong> Counter automatically rolls back to <strong>#{docNo}</strong> so sequence stays gap-free.
+              <strong>LIFO Protocol:</strong> Next sequence counter rolls back to <strong>#{docNo}</strong> to maintain unbroken audit numbering.
             </span>
           </div>
 
           {/* PIN Input & Keypad */}
-          <div className="pt-1">
-            <div className="text-center mb-2">
+          <div>
+            <div className="text-center mb-1.5">
               <div className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                 <Lock className="w-3 h-3 text-slate-500" />
                 <span>Enter 4-Digit Security PIN</span>
               </div>
               <p className="text-[10px] text-slate-400">
-                Type on keyboard or tap numeric keys below
+                Accepts num keypad, physical keyboard, or buttons below
               </p>
             </div>
 
             {/* Digit Visualizer Boxes */}
-            <div className="flex justify-center gap-2.5 mb-2.5">
+            <div className="flex justify-center gap-2.5 mb-2">
               {[0, 1, 2, 3].map((idx) => {
                 const hasDigit = pin.length > idx;
                 return (
                   <div
                     key={idx}
-                    className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-base font-bold transition-all ${
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl border-2 flex items-center justify-center text-base font-bold transition-all ${
                       hasDigit
                         ? 'border-rose-600 bg-rose-50 text-rose-700'
                         : 'border-slate-300 bg-slate-50 text-transparent'
@@ -240,7 +292,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
               })}
             </div>
 
-            {/* Hidden Input for Physical Keyboard typing */}
+            {/* Hidden Input for Physical Keyboard / Autofocus fallback */}
             <form onSubmit={handleSubmit} className="relative">
               <input
                 ref={pinInputRef}
@@ -264,21 +316,21 @@ export const LifoDeleteModal: React.FC<Props> = ({
 
             {/* Error Message */}
             {errorMsg && (
-              <div className="p-2 rounded-lg bg-rose-100 border border-rose-300 text-rose-800 text-[11px] font-bold flex items-center justify-center gap-1.5 mb-2">
+              <div className="p-1.5 rounded-lg bg-rose-100 border border-rose-300 text-rose-800 text-[11px] font-bold flex items-center justify-center gap-1.5 mb-2">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
             {/* Compact Numeric Keypad */}
-            <div className="max-w-[260px] mx-auto grid grid-cols-3 gap-1.5 mb-1">
+            <div className="max-w-[240px] sm:max-w-[260px] mx-auto grid grid-cols-3 gap-1.5 mb-1">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
                 <button
                   key={digit}
                   type="button"
-                  onClick={() => handleKeyPress(digit)}
+                  onClick={() => handleKeypadPress(digit)}
                   disabled={isDeleting || isVerifying}
-                  className="h-9 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-bold text-sm transition cursor-pointer flex items-center justify-center disabled:opacity-50"
+                  className="h-8 sm:h-9 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-bold text-sm transition cursor-pointer flex items-center justify-center disabled:opacity-50"
                 >
                   {digit}
                 </button>
@@ -287,15 +339,15 @@ export const LifoDeleteModal: React.FC<Props> = ({
                 type="button"
                 onClick={handleClearPin}
                 disabled={isDeleting || isVerifying || pin.length === 0}
-                className="h-9 rounded-lg bg-slate-50 hover:bg-slate-200 text-slate-600 font-bold text-[11px] transition cursor-pointer flex items-center justify-center disabled:opacity-30"
+                className="h-8 sm:h-9 rounded-lg bg-slate-50 hover:bg-slate-200 text-slate-600 font-bold text-[11px] transition cursor-pointer flex items-center justify-center disabled:opacity-30"
               >
                 Clear
               </button>
               <button
                 type="button"
-                onClick={() => handleKeyPress('0')}
+                onClick={() => handleKeypadPress('0')}
                 disabled={isDeleting || isVerifying}
-                className="h-9 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-bold text-sm transition cursor-pointer flex items-center justify-center disabled:opacity-50"
+                className="h-8 sm:h-9 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-bold text-sm transition cursor-pointer flex items-center justify-center disabled:opacity-50"
               >
                 0
               </button>
@@ -303,7 +355,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
                 type="button"
                 onClick={handleDeleteDigit}
                 disabled={isDeleting || isVerifying || pin.length === 0}
-                className="h-9 rounded-lg bg-slate-50 hover:bg-slate-200 text-slate-600 font-bold text-xs transition cursor-pointer flex items-center justify-center disabled:opacity-30"
+                className="h-8 sm:h-9 rounded-lg bg-slate-50 hover:bg-slate-200 text-slate-600 font-bold text-xs transition cursor-pointer flex items-center justify-center disabled:opacity-30"
                 title="Backspace"
               >
                 <Delete className="w-4 h-4" />
@@ -312,13 +364,13 @@ export const LifoDeleteModal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Compact Modal Footer Actions */}
-        <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5 shrink-0">
+        {/* Screen-Fitted Footer Actions */}
+        <div className="px-4 py-2.5 sm:py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5 shrink-0">
           <button
             type="button"
             onClick={onClose}
             disabled={isDeleting || isVerifying}
-            className="px-3.5 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+            className="px-3.5 py-1.5 sm:py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>
@@ -327,7 +379,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
             type="button"
             onClick={() => verifyAndProceed(pin)}
             disabled={isDeleting || isVerifying || pin.length < 4}
-            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold shadow-sm hover:shadow transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+            className="px-4 py-1.5 sm:py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold shadow-sm hover:shadow transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
           >
             {isDeleting || isVerifying ? (
               <>

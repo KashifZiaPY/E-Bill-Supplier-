@@ -14,8 +14,8 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
-// Proxy route for Google Apps Script Web App
-app.post('/api/gas', async (req, res) => {
+// Proxy route for Google Apps Script Web App (supports POST and GET for health checks)
+app.all('/api/gas', async (req, res) => {
   await gasHandler(req, res);
 });
 

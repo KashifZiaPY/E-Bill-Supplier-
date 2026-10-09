@@ -17,6 +17,7 @@ import {
   User,
   Lock,
   RotateCcw,
+  FileCode,
 } from 'lucide-react';
 import type { FirmProfile, SupplierSettings, DocumentRecord } from '../types/billing';
 import { MarginTestPrintLayout } from './print/MarginTestPrintLayout';
@@ -24,6 +25,7 @@ import { gasApi } from '../api/gasClient';
 import { formatCurrency } from '../utils/formatters';
 import { getLastDocLIFO } from '../utils/lifoHelper';
 import { LifoDeleteModal } from './LifoDeleteModal';
+import { GoogleAppsScriptModal } from './GoogleAppsScriptModal';
 
 interface Props {
   settings: SupplierSettings;
@@ -56,6 +58,7 @@ export const SettingsScreen: React.FC<Props> = ({
   const [docToDeleteLifo, setDocToDeleteLifo] = useState<DocumentRecord | null>(null);
   const [isLifoModalOpen, setIsLifoModalOpen] = useState(false);
   const [isDeletingLifo, setIsDeletingLifo] = useState(false);
+  const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
 
   const handleUpdatePin = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -898,6 +901,18 @@ export const SettingsScreen: React.FC<Props> = ({
                   <p className="font-semibold">{backendStatus.message}</p>
                 </div>
               )}
+
+              {/* View & Copy Full Google Apps Script Code */}
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsScriptModalOpen(true)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                >
+                  <FileCode className="w-4 h-4 text-emerald-400" />
+                  <span>View &amp; Copy Google Apps Script (Code.gs v2.5)</span>
+                </button>
+              </div>
             </div>
           </div>
         </form>
@@ -907,6 +922,12 @@ export const SettingsScreen: React.FC<Props> = ({
       <footer className="py-4 text-center text-xs text-slate-400 font-medium">
         Developed by MKZ · {formData.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Systems
       </footer>
+
+      {/* Google Apps Script Modal */}
+      <GoogleAppsScriptModal
+        isOpen={isScriptModalOpen}
+        onClose={() => setIsScriptModalOpen(false)}
+      />
 
       {/* LIFO PIN Protected Delete Modal */}
       <LifoDeleteModal

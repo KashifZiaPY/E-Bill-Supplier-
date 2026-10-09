@@ -27,8 +27,12 @@ export function isLastDocLIFO(
   if (!doc || !allDocs || allDocs.length === 0) return false;
   const docType = String(doc.type || doc.Type || 'BILL').toUpperCase() as DocType;
 
+  // Derive authoritative firm ID for this document if targetFirmId is not supplied
+  const effectiveFirmId = targetFirmId || doc.firmId || 
+    (String(doc.firmName || '').toLowerCase().includes('hashir') ? 'firm-hashir-traders' : 'firm-anwar-traders');
+
   // Single authoritative source of truth for the LIFO candidate
-  const lastCandidate = getLastDocLIFO(allDocs, docType, targetFirmId);
+  const lastCandidate = getLastDocLIFO(allDocs, docType, effectiveFirmId);
   if (!lastCandidate) return false;
 
   const targetId = String(doc.docId || doc.DocID || '').trim();
@@ -39,13 +43,17 @@ export function isLastDocLIFO(
     return true;
   }
 
-  // Fallback: match by document number and type
+  // Fallback: match by document number, type AND firm
   const targetNo = String(doc.docNo || doc.DocNo || '').trim();
   const candidateNo = String(lastCandidate.docNo || lastCandidate.DocNo || '').trim();
   if (targetNo && candidateNo && targetNo === candidateNo) {
     const candidateType = String(lastCandidate.type || lastCandidate.Type || 'BILL').toUpperCase();
     if (docType === candidateType) {
-      return true;
+      const docFirm = String(doc.firmId || '').trim();
+      const candFirm = String(lastCandidate.firmId || '').trim();
+      if (!docFirm || !candFirm || docFirm === candFirm) {
+        return true;
+      }
     }
   }
 
@@ -58,9 +66,9 @@ export function isLastDocLIFO(
  * 
  * STRICT UNAMBIGUOUS DEFINITION:
  * 1. Checks matching document type and firm.
- * 2. Selects the single document with the highest serial sequence number.
- * 3. In case of identical sequence numbers, uses latest creation date, then index 0.
- * Exactly ONE document is ever returned.
+ * 2. Selects the single document with the highest serial sequence number for that firm.
+ * 3. In case of identical sequence numbers, uses latest creation date, then ID.
+ * Exactly ONE document per firm is ever returned. Never falls back to other firms.
  */
 export function getLastDocLIFO(
   allDocs: DocumentRecord[],
@@ -73,20 +81,26 @@ export function getLastDocLIFO(
   const firmId = targetFirmId ? String(targetFirmId).trim() : '';
 
   // Filter documents matching docType (and firm if provided)
-  let matching = allDocs.filter((d) => {
+  const matching = allDocs.filter((d) => {
     const t = String(d.type || d.Type || 'BILL').toUpperCase();
     if (t !== targetType) return false;
-    if (firmId && d.firmId && String(d.firmId).trim() !== firmId) return false;
+    
+    if (firmId) {
+      const dFirmId = String(d.firmId || '').trim();
+      const dFirmName = String(d.firmName || '').toLowerCase().trim();
+      const isHashirTarget = firmId.includes('hashir');
+      const isAnwarTarget = firmId.includes('anwar');
+
+      if (dFirmId) {
+        if (dFirmId !== firmId) return false;
+      } else {
+        // Untagged firmId: disambiguate via firmName
+        if (isHashirTarget && !dFirmName.includes('hashir')) return false;
+        if (isAnwarTarget && dFirmName.includes('hashir')) return false;
+      }
+    }
     return true;
   });
-
-  // If firm filter yielded nothing, fallback to matching by docType only
-  if (matching.length === 0 && firmId) {
-    matching = allDocs.filter((d) => {
-      const t = String(d.type || d.Type || 'BILL').toUpperCase();
-      return t === targetType;
-    });
-  }
 
   if (matching.length === 0) return null;
 

@@ -31,24 +31,38 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
   const clientAddress = doc.clientAddress || doc.ClientAddress || '';
   const clientNTN = doc.clientNTN || doc.ClientNTN || '';
   const refText = doc.refText || doc.RefText || '';
-  const firmName = doc.firmName || settings.supplierName || 'ANWAR TRADERS';
+  const firmObj = settings.firms?.find((f) => f.id === doc.firmId) ||
+    settings.firms?.find((f) => f.name?.toLowerCase().trim() === (doc.firmName || '').toLowerCase().trim());
+  const isHashirStyle = doc.firmId === 'firm-hashir-traders' ||
+    (doc.firmName || '').toLowerCase().includes('hashir') ||
+    firmObj?.styleTheme === 'MODERN_CORPORATE';
+
+  const firmName = doc.firmName || firmObj?.name || settings.supplierName || 'ANWAR TRADERS';
+  const firmTagline = firmObj?.tagline || settings.supplierTagline;
+  const firmAddress = firmObj?.address || settings.supplierAddress;
+  const firmPhone = firmObj?.phone || settings.supplierPhone;
+  const firmNTN = firmObj?.ntn || settings.supplierNTN;
+  const firmGST = firmObj?.gst || settings.supplierGST;
+  const firmVendor = firmObj?.vendorNo || settings.vendorNo;
 
   // 4 empty rows for authentic Pakistani government sales tax format
   const emptyRows = [1, 2, 3, 4];
 
   return (
-    <div className="gst-invoice-sheet font-sans text-black text-[10pt] leading-tight mx-auto bg-white w-full print:bg-white print:text-black">
+    <div className={`gst-invoice-sheet text-black text-[10pt] leading-tight mx-auto bg-white w-full print:bg-white print:text-black ${
+      isHashirStyle ? 'font-sans' : 'font-serif'
+    }`}>
       {/* If Letterhead OFF: Show Supplier Header */}
       {!printOnLetterhead && (
-        <div className="border-b-2 border-black pb-2 mb-2.5 text-center">
+        <div className={`border-b-2 ${isHashirStyle ? 'border-slate-900 pb-3 mb-3' : 'border-black pb-2 mb-2.5'} text-center`}>
           <h1 className="text-2xl font-black uppercase tracking-wide text-black">{firmName}</h1>
-          <p className="text-xs font-semibold text-gray-700 tracking-wider uppercase">{settings.supplierTagline}</p>
-          <p className="text-xs text-gray-800 mt-0.5">{settings.supplierAddress}</p>
+          <p className="text-xs font-semibold text-gray-700 tracking-wider uppercase">{firmTagline}</p>
+          <p className="text-xs text-gray-800 mt-0.5">{firmAddress}</p>
           <div className="flex flex-wrap justify-center gap-x-4 text-xs font-semibold text-gray-900 mt-1">
-            <span>Ph: {settings.supplierPhone}</span>
-            <span>NTN: {settings.supplierNTN}</span>
-            <span>GST No: {settings.supplierGST}</span>
-            {settings.vendorNo && <span>Vendor No: {settings.vendorNo}</span>}
+            <span>Ph: {firmPhone}</span>
+            <span>NTN: {firmNTN}</span>
+            <span>GST No: {firmGST}</span>
+            {firmVendor && <span>Vendor No: {firmVendor}</span>}
           </div>
         </div>
       )}

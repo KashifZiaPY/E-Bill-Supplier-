@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   Trash2,
   ShieldAlert,
+  Eye,
 } from 'lucide-react';
 import type { DocumentRecord, SavedClient, SupplierSettings } from '../types/billing';
 import { formatCurrency, formatDateDisplay, safeNormalizeItems } from '../utils/formatters';
@@ -89,6 +90,7 @@ export const HomeScreen: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS' | 'REPORTS'>('DOCUMENTS');
   const [docFilter, setDocFilter] = useState<'ALL' | 'BILL' | 'QUOTATION'>('ALL');
   const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
+  const [drillDownClient, setDrillDownClient] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // LIFO Deletion state
@@ -287,27 +289,7 @@ export const HomeScreen: React.FC<Props> = ({
   const clientReportSummaries = useMemo<ClientReportSummary[]>(() => {
     const summaryMap = new Map<string, ClientReportSummary>();
 
-    // Seed known clients from clients directory
-    (clients || []).forEach((c: any) => {
-      const name = String(c?.name || c?.Name || c?.clientName || c?.ClientName || (typeof c === 'string' ? c : '')).trim();
-      if (!name) return;
-      const key = name.toLowerCase();
-      summaryMap.set(key, {
-        clientName: name,
-        clientNTN: String(c?.ntn || c?.NTN || c?.clientNTN || c?.ClientNTN || ''),
-        clientAddress: String(c?.address || c?.Address || c?.clientAddress || c?.ClientAddress || ''),
-        billCount: 0,
-        quoteCount: 0,
-        goodsTotal: 0,
-        gstTotal: 0,
-        serviceTotal: 0,
-        pstTotal: 0,
-        grandTotal: 0,
-        lastBillDate: '',
-      });
-    });
-
-    // Aggregate from all documents in register
+    // Aggregate from all active documents in register
     (docs || []).forEach((d) => {
       const isCancelled = String(d.status || d.Status || '').toLowerCase() === 'cancelled';
       if (isCancelled) return;
@@ -330,6 +312,8 @@ export const HomeScreen: React.FC<Props> = ({
           pstTotal: 0,
           grandTotal: 0,
           lastBillDate: '',
+          lastBillNo: '',
+          lastBillAmount: 0,
         };
         summaryMap.set(key, entry);
       } else {
@@ -339,9 +323,8 @@ export const HomeScreen: React.FC<Props> = ({
 
       const docType = String(d.type || d.Type || 'BILL').toUpperCase();
       const docDate = String(d.date || d.Date || '');
-      if (docDate && (!entry.lastBillDate || docDate > entry.lastBillDate)) {
-        entry.lastBillDate = docDate;
-      }
+      const docNo = String(d.docNo || d.DocNo || '');
+      const docTotal = Number(d.grandTotal ?? d.GrandTotal ?? 0);
 
       if (docType === 'BILL') {
         entry.billCount += 1;
@@ -349,15 +332,26 @@ export const HomeScreen: React.FC<Props> = ({
         entry.gstTotal += Number(d.gst ?? d.GST ?? 0);
         entry.serviceTotal += Number(d.serviceSub ?? d.ServiceSub ?? 0);
         entry.pstTotal += Number(d.pst ?? d.PST ?? 0);
-        entry.grandTotal += Number(d.grandTotal ?? d.GrandTotal ?? 0);
+        entry.grandTotal += docTotal;
+
+        if (docDate && (!entry.lastBillDate || docDate >= entry.lastBillDate)) {
+          entry.lastBillDate = docDate;
+          entry.lastBillNo = docNo;
+          entry.lastBillAmount = docTotal;
+        }
       } else {
         entry.quoteCount += 1;
       }
     });
 
+    // Requirement: in client report (no need to display with zero value)
+    const activeList = Array.from(summaryMap.values()).filter(
+      (r) => r.grandTotal > 0
+    );
+
     // Sort by grandTotal descending (highest revenue client first)
-    return Array.from(summaryMap.values()).sort((a, b) => b.grandTotal - a.grandTotal);
-  }, [clients, docs]);
+    return activeList.sort((a, b) => b.grandTotal - a.grandTotal);
+  }, [docs]);
 
   // Filtered Client Report matching search query
   const filteredClientReport = useMemo(() => {
@@ -396,6 +390,21 @@ export const HomeScreen: React.FC<Props> = ({
 
     return { totalBills, totalQuotes, totalGoods, totalGst, totalServices, totalPst, totalGrand };
   }, [filteredClientReport]);
+
+  const drillDownDocs = useMemo(() => {
+    if (!drillDownClient) return [];
+    const clientKey = drillDownClient.toLowerCase().trim();
+    return docs.filter(
+      (d) => String(d.clientName || d.ClientName || '').toLowerCase().trim() === clientKey
+    );
+  }, [docs, drillDownClient]);
+
+  const drillDownSummary = useMemo(() => {
+    if (!drillDownClient) return null;
+    return clientReportSummaries.find(
+      (r) => r.clientName.toLowerCase().trim() === drillDownClient.toLowerCase().trim()
+    );
+  }, [clientReportSummaries, drillDownClient]);
 
   return (
     <div className="min-h-screen bg-[#F4F6F9] flex flex-col justify-between">
@@ -478,9 +487,10 @@ export const HomeScreen: React.FC<Props> = ({
 
       {/* Main Container */}
       <main className="max-w-6xl mx-auto px-4 py-5 w-full flex-1">
-        {/* KPI Analytics Cards: Separated GST & PST display */}
+        {/* KPI Analytics Cards: Distinct vibrant colors for immediate visual recognition */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white border border-blue-900 shadow-sm">
+          {/* Card 1: Active Entity -> Midnight Navy & Gold */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#0B1E36] via-[#103158] to-[#0A192F] text-white border border-blue-900 shadow-sm">
             <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 block">
               Active Entity
             </span>
@@ -492,64 +502,66 @@ export const HomeScreen: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white border border-emerald-200/90 shadow-xs hover:border-emerald-300 transition">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 block">
+          {/* Card 2: Total Billed -> Rich Vibrant Emerald Green */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-sm border border-emerald-500/80 hover:shadow-md transition">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-100 block">
               Total Billed (PKR)
             </span>
-            <div className="text-base sm:text-lg font-black font-mono text-emerald-800 truncate mt-0.5">
+            <div className="text-base sm:text-lg font-black font-mono text-white truncate mt-0.5">
               Rs. {formatCurrency(analytics.totalBilled)}
             </div>
-            <div className="text-[11px] text-emerald-700/80 mt-0.5 font-medium">
+            <div className="text-[11px] text-emerald-200 mt-0.5 font-medium">
               Across active orders
             </div>
           </div>
 
-          {/* Separated Card: Federal GST Total */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/40 to-white border border-blue-200/90 shadow-xs hover:border-blue-300 transition">
+          {/* Card 3: Federal GST Total -> Vibrant Royal Blue & Indigo */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-700 to-blue-800 text-white shadow-sm border border-blue-500/80 hover:shadow-md transition">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-900 block">
-                Federal GST
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-100 block">
+                Federal GST (18%)
               </span>
-              <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+              <span className="w-2 h-2 rounded-full bg-blue-300"></span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-blue-950 truncate mt-0.5">
+            <div className="text-base sm:text-lg font-black font-mono text-white truncate mt-0.5">
               Rs. {formatCurrency(analytics.totalGst)}
             </div>
-            <div className="text-[11px] text-blue-700/80 mt-0.5 font-medium">
+            <div className="text-[11px] text-blue-200 mt-0.5 font-medium">
               Sales Tax on Goods
             </div>
           </div>
 
-          {/* Separated Card: Punjab PST Total */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-teal-50 via-cyan-50/40 to-white border border-teal-200/90 shadow-xs hover:border-teal-300 transition">
+          {/* Card 4: Punjab PST Total -> Warm Amber & Orange */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 text-white shadow-sm border border-amber-500/80 hover:shadow-md transition">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-teal-900 block">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-100 block">
                 Punjab PST (16%)
               </span>
-              <span className="w-2 h-2 rounded-full bg-teal-600"></span>
+              <span className="w-2 h-2 rounded-full bg-amber-200"></span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-teal-900 truncate mt-0.5">
+            <div className="text-base sm:text-lg font-black font-mono text-white truncate mt-0.5">
               Rs. {formatCurrency(analytics.totalPst)}
             </div>
-            <div className="text-[11px] text-teal-700/80 mt-0.5 font-medium">
+            <div className="text-[11px] text-amber-200 mt-0.5 font-medium">
               Sales Tax on Services
             </div>
           </div>
 
-          <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-gradient-to-br from-slate-50 via-indigo-50/30 to-white border border-slate-200/90 shadow-xs hover:border-slate-300 transition">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+          {/* Card 5: Documents Register -> Rich Purple & Plum */}
+          <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-gradient-to-br from-purple-700 via-indigo-800 to-purple-900 text-white shadow-sm border border-purple-600/80 hover:shadow-md transition">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-200 block">
               Documents Register
             </span>
-            <div className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
-              {analytics.billCount} Bills <span className="text-slate-400 font-normal">/</span> {analytics.quoteCount} Quotes
+            <div className="text-base sm:text-lg font-black text-white mt-0.5">
+              {analytics.billCount} Bills <span className="text-purple-300 font-normal">/</span> {analytics.quoteCount} Quotes
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
+            <div className="text-[11px] text-purple-200 mt-0.5 font-medium">
               {clients.length} Saved Clients
             </div>
           </div>
         </div>
 
-        {/* Big Action Launchers */}
+        {/* Big Action Launchers with distinctive colored identities */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-6">
           <button
             onClick={onNewBill}
@@ -571,37 +583,37 @@ export const HomeScreen: React.FC<Props> = ({
 
           <button
             onClick={onNewQuotation}
-            className="group p-5 rounded-2xl bg-gradient-to-br from-[#1E293B] via-[#2A3B52] to-[#1E293B] hover:from-[#253348] hover:to-[#334661] active:scale-[0.99] text-white flex flex-col justify-between shadow-md hover:shadow-xl border border-slate-700/50 transition cursor-pointer text-left h-28"
+            className="group p-5 rounded-2xl bg-gradient-to-br from-[#78350F] via-[#92400E] to-[#78350F] hover:from-[#853C12] hover:to-[#A14710] active:scale-[0.99] text-white flex flex-col justify-between shadow-md hover:shadow-xl border border-amber-800/50 transition cursor-pointer text-left h-28"
           >
             <div className="flex justify-between items-start">
               <span className="p-2 rounded-xl bg-white/15 text-white">
-                <FileText className="w-5 h-5 text-blue-300" />
+                <FileText className="w-5 h-5 text-amber-300" />
               </span>
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md text-slate-200">
+              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md text-amber-100">
                 Next #{currentFirm.nextQuoteNo || 'Q-201'}
               </span>
             </div>
             <div>
               <div className="text-lg font-black tracking-tight text-white">New Quotation</div>
-              <p className="text-xs text-slate-300 font-medium">Rate estimate with 7-day validity</p>
+              <p className="text-xs text-amber-200 font-medium">Rate estimate with 7-day validity</p>
             </div>
           </button>
 
           <button
             onClick={onOpenSettings}
-            className="group p-5 rounded-2xl bg-white hover:bg-blue-50/50 active:scale-[0.99] text-slate-800 border border-slate-200/90 flex flex-col justify-between shadow-xs hover:shadow-md transition cursor-pointer text-left h-28"
+            className="group p-5 rounded-2xl bg-gradient-to-br from-[#1E293B] via-[#0F766E] to-[#1E293B] hover:from-[#243349] hover:to-[#115E59] active:scale-[0.99] text-white border border-teal-800/50 flex flex-col justify-between shadow-md hover:shadow-xl transition cursor-pointer text-left h-28"
           >
             <div className="flex justify-between items-start">
-              <span className="p-2 rounded-xl bg-blue-50 text-[#0F2544] border border-blue-200/50">
-                <Settings className="w-5 h-5 text-[#0F2544]" />
+              <span className="p-2 rounded-xl bg-white/15 text-white">
+                <Settings className="w-5 h-5 text-teal-300" />
               </span>
-              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
+              <span className="text-xs font-bold text-teal-200 bg-white/15 px-2 py-0.5 rounded-md">
                 {firms.length} Firms Active
               </span>
             </div>
             <div>
-              <div className="text-lg font-black tracking-tight text-slate-900">Manage Profiles</div>
-              <p className="text-xs text-slate-500 font-medium">Print margins, NTN &amp; settings</p>
+              <div className="text-lg font-black tracking-tight text-white">Manage Profiles</div>
+              <p className="text-xs text-teal-200 font-medium">Print margins, NTN &amp; settings</p>
             </div>
           </button>
         </div>
@@ -753,7 +765,7 @@ export const HomeScreen: React.FC<Props> = ({
                   </p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-slate-100 pb-32 sm:pb-24">
                   {filteredDocs.map((doc, docIdx) => {
                     const docId = String(doc.docId || doc.DocID || '');
                     const docNo = String(doc.docNo || doc.DocNo || '—');
@@ -764,14 +776,18 @@ export const HomeScreen: React.FC<Props> = ({
                     const status = String(doc.status || doc.Status || 'Active');
                     const isCancelled = status.toLowerCase() === 'cancelled';
                     const isMenuOpen = activeMenuDocId === docId;
-                    const firmName = String(doc.firmName || currentFirm.name);
-                    const isLastLIFO = isLastDocLIFO(doc, docs, currentFirm.id);
-                    const isBottomEntry = docIdx >= Math.max(0, filteredDocs.length - 2);
+                    const docFirmId = doc.firmId || (String(doc.firmName || '').toLowerCase().includes('hashir') ? 'firm-hashir-traders' : 'firm-anwar-traders');
+                    const firmName = String(doc.firmName || (docFirmId === 'firm-hashir-traders' ? 'Hashir Traders' : 'Anwar Traders'));
+                    // Strict firm-isolated LIFO candidate check: Only the single latest serial entry for this specific firm is LIFO
+                    const isLastLIFO = isLastDocLIFO(doc, docs, docFirmId);
+                    const isBottomEntry = docIdx >= filteredDocs.length - 1 || (filteredDocs.length > 2 && docIdx >= filteredDocs.length - 2);
 
                     return (
                       <div
                         key={docId}
-                        className={`p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative cursor-default ${
+                        className={`p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-default ${
+                          isMenuOpen ? 'z-50 relative bg-slate-50/90 shadow-xs' : 'relative z-10'
+                        } ${
                           isCancelled
                             ? 'bg-slate-50/80 text-slate-400 opacity-60'
                             : 'hover:bg-slate-50/70 text-slate-900'
@@ -870,8 +886,9 @@ export const HomeScreen: React.FC<Props> = ({
                                   e.stopPropagation();
                                   setActiveMenuDocId(isMenuOpen ? null : docId);
                                 }}
-                                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-200 rounded-lg transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                                 aria-label="Actions"
+                                title="Document options"
                               >
                                 <MoreVertical className="w-5 h-5" />
                               </button>
@@ -886,7 +903,7 @@ export const HomeScreen: React.FC<Props> = ({
                                     setActiveMenuDocId(null);
                                   }}
                                 />
-                                <div className={`absolute right-0 ${isBottomEntry ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1 origin-top-right'} w-52 sm:w-56 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 py-1.5 text-xs font-semibold ring-1 ring-black/5 animate-in fade-in`}>
+                                <div className={`absolute right-0 ${isBottomEntry ? 'bottom-full mb-2 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'} w-52 sm:w-56 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 py-1.5 text-xs font-semibold ring-1 ring-black/5 animate-in fade-in`}>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -1130,9 +1147,9 @@ export const HomeScreen: React.FC<Props> = ({
               {filteredClientReport.length === 0 ? (
                 <div className="p-12 text-center text-slate-500">
                   <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="font-bold text-slate-700">No client records found</p>
+                  <p className="font-bold text-slate-700">No active billed clients</p>
                   <p className="text-xs text-slate-400 mt-1">
-                    {searchQuery ? `No client matches "${searchQuery}". Clear search to view all.` : 'Bills will automatically populate this report as you create them.'}
+                    {searchQuery ? `No client matches "${searchQuery}". Clear search to view all.` : 'Clients with active bills will appear in this audited report.'}
                   </p>
                 </div>
               ) : (
@@ -1159,13 +1176,15 @@ export const HomeScreen: React.FC<Props> = ({
                         return (
                           <tr
                             key={c.clientName + i}
-                            className={`hover:bg-blue-50/70 transition ${isEven ? 'bg-white' : 'bg-slate-50/60'}`}
+                            onClick={() => setDrillDownClient(c.clientName)}
+                            className={`hover:bg-blue-50/70 transition cursor-pointer ${isEven ? 'bg-white' : 'bg-slate-50/60'}`}
+                            title="Click to view all bills and detailed ledger for this client"
                           >
                             <td className="py-3 px-3 text-center font-bold text-slate-500">
                               {i + 1}
                             </td>
                             <td className="py-3 px-3">
-                              <div className="font-bold text-slate-900 text-sm">
+                              <div className="font-bold text-slate-900 text-sm hover:text-blue-900">
                                 {c.clientName}
                               </div>
                               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
@@ -1196,34 +1215,45 @@ export const HomeScreen: React.FC<Props> = ({
                               </span>
                             </td>
                             <td className="py-3 px-3 text-right font-mono text-slate-700">
-                              Rs. {formatCurrency(c.goodsTotal)}
+                              {c.goodsTotal > 0 ? `Rs. ${formatCurrency(c.goodsTotal)}` : <span className="text-slate-300 font-sans">—</span>}
                             </td>
                             <td className="py-3 px-3 text-right font-mono text-blue-700 font-semibold">
-                              Rs. {formatCurrency(c.gstTotal)}
+                              {c.gstTotal > 0 ? `Rs. ${formatCurrency(c.gstTotal)}` : <span className="text-slate-300 font-sans">—</span>}
                             </td>
                             <td className="py-3 px-3 text-right font-mono text-slate-700">
-                              Rs. {formatCurrency(c.serviceTotal)}
+                              {c.serviceTotal > 0 ? `Rs. ${formatCurrency(c.serviceTotal)}` : <span className="text-slate-300 font-sans">—</span>}
                             </td>
                             <td className="py-3 px-3 text-right font-mono text-emerald-700 font-semibold">
-                              Rs. {formatCurrency(c.pstTotal)}
+                              {c.pstTotal > 0 ? `Rs. ${formatCurrency(c.pstTotal)}` : <span className="text-slate-300 font-sans">—</span>}
                             </td>
                             <td className="py-3 px-3 text-right font-mono font-black text-slate-900 text-sm">
                               Rs. {formatCurrency(c.grandTotal)}
                             </td>
-                            <td className="py-3 px-3 text-center text-xs text-slate-600 whitespace-nowrap">
-                              {c.lastBillDate ? formatDateDisplay(c.lastBillDate) : '—'}
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              {c.lastBillNo ? (
+                                <div>
+                                  <span className="font-mono font-bold text-slate-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-[11px]">
+                                    BILL #{c.lastBillNo}
+                                  </span>
+                                  <div className="text-[10px] text-slate-500 mt-0.5 font-medium">
+                                    {formatDateDisplay(c.lastBillDate)} · Rs. {formatCurrency(c.lastBillAmount)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
                             </td>
                             <td className="py-3 px-3 text-center">
                               <button
-                                onClick={() => {
-                                  setDocFilter('ALL');
-                                  setSearchQuery(c.clientName);
-                                  setActiveTab('DOCUMENTS');
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDrillDownClient(c.clientName);
                                 }}
-                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-[#0F2544] hover:text-white text-slate-700 font-bold text-[11px] transition cursor-pointer"
-                                title={`View all documents for ${c.clientName}`}
+                                className="px-3 py-1.5 rounded-xl bg-[#0F2544] hover:bg-[#163866] text-white font-bold text-[11px] inline-flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                                title={`View all bills and detailed breakdown for ${c.clientName}`}
                               >
-                                View Docs
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>All Bills ({c.billCount})</span>
                               </button>
                             </td>
                           </tr>
@@ -1323,6 +1353,185 @@ export const HomeScreen: React.FC<Props> = ({
       <footer className="py-4 pb-20 sm:pb-4 text-center text-xs text-slate-400 font-medium">
         Developed by MKZ · {settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Systems
       </footer>
+
+      {/* Client-Wise Detailed Ledger & Bills Drill-Down Modal */}
+      {drillDownClient && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-xs animate-in fade-in"
+          onClick={() => setDrillDownClient(null)}
+        >
+          <div
+            className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col my-auto max-h-[92vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-amber-300 font-black">
+                  <Briefcase className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-black text-white">
+                      {drillDownClient}
+                    </h2>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 uppercase">
+                      Client Ledger
+                    </span>
+                  </div>
+                  <p className="text-xs text-blue-200 font-medium">
+                    {drillDownSummary?.clientAddress ? drillDownSummary.clientAddress + ' · ' : ''}
+                    {drillDownSummary?.clientNTN ? 'NTN: ' + drillDownSummary.clientNTN : 'No NTN recorded'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => exportDocumentsToExcel(drillDownDocs, `${drillDownClient}_Bills`)}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export Client Ledger</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrillDownClient(null)}
+                  className="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Client Summary Mini-Cards */}
+            {drillDownSummary && (
+              <div className="p-3 sm:p-4 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0 text-xs">
+                <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block">Total Invoiced</span>
+                  <span className="font-mono font-black text-slate-900 text-base">
+                    Rs. {formatCurrency(drillDownSummary.grandTotal)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">{drillDownDocs.length} Total Docs</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-blue-800 block">Federal GST</span>
+                  <span className="font-mono font-bold text-blue-800 text-sm">
+                    Rs. {formatCurrency(drillDownSummary.gstTotal)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Goods: Rs. {formatCurrency(drillDownSummary.goodsTotal)}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-emerald-800 block">Punjab PST</span>
+                  <span className="font-mono font-bold text-emerald-800 text-sm">
+                    Rs. {formatCurrency(drillDownSummary.pstTotal)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Services: Rs. {formatCurrency(drillDownSummary.serviceTotal)}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block">Latest Bill</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm">
+                    {drillDownSummary.lastBillNo ? `BILL #${drillDownSummary.lastBillNo}` : '—'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    {drillDownSummary.lastBillDate ? formatDateDisplay(drillDownSummary.lastBillDate) : 'No bill'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Document Records Drill-Down Table */}
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
+              {drillDownDocs.length === 0 ? (
+                <div className="p-8 text-center text-slate-400">
+                  <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="font-bold text-slate-600">No documents found for this client</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold tracking-wider border-b border-slate-300">
+                        <th className="py-2 px-2.5 text-center">Sr</th>
+                        <th className="py-2 px-2.5">Date</th>
+                        <th className="py-2 px-2.5">Type &amp; #</th>
+                        <th className="py-2 px-3">Subject / PO Reference</th>
+                        <th className="py-2 px-2.5 text-right">Goods</th>
+                        <th className="py-2 px-2.5 text-right">GST</th>
+                        <th className="py-2 px-2.5 text-right">Services</th>
+                        <th className="py-2 px-2.5 text-right">PST</th>
+                        <th className="py-2 px-2.5 text-right font-black">Grand Total</th>
+                        <th className="py-2 px-2.5 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {drillDownDocs.map((d, idx) => {
+                        const dType = String(d.type || d.Type || 'BILL');
+                        const dNo = String(d.docNo || d.DocNo || '—');
+                        const isCancelled = String(d.status || d.Status || '').toLowerCase() === 'cancelled';
+                        const total = Number(d.grandTotal ?? d.GrandTotal ?? 0);
+                        const goods = Number(d.goodsSub ?? d.GoodsSub ?? 0);
+                        const gst = Number(d.gst ?? d.GST ?? 0);
+                        const services = Number(d.serviceSub ?? d.ServiceSub ?? 0);
+                        const pst = Number(d.pst ?? d.PST ?? 0);
+
+                        return (
+                          <tr key={d.docId || idx} className={`hover:bg-slate-50 transition ${isCancelled ? 'opacity-60 bg-slate-50' : ''}`}>
+                            <td className="py-2.5 px-2.5 text-center font-bold text-slate-400">{idx + 1}</td>
+                            <td className="py-2.5 px-2.5 font-medium whitespace-nowrap text-slate-600">{formatDateDisplay(d.date || d.Date)}</td>
+                            <td className="py-2.5 px-2.5 whitespace-nowrap">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                                dType === 'BILL' ? 'bg-blue-100 text-blue-900 border border-blue-200' : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                              }`}>
+                                {dType} #{dNo}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-700 max-w-xs truncate" title={d.refText || d.RefText || ''}>
+                              {d.refText || d.RefText || <span className="text-slate-300 italic">No reference</span>}
+                            </td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-slate-600">{goods > 0 ? formatCurrency(goods) : '—'}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-blue-700">{gst > 0 ? formatCurrency(gst) : '—'}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-slate-600">{services > 0 ? formatCurrency(services) : '—'}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-emerald-700">{pst > 0 ? formatCurrency(pst) : '—'}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono font-black text-slate-950">Rs. {formatCurrency(total)}</td>
+                            <td className="py-2.5 px-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDrillDownClient(null);
+                                  onSelectDoc(d);
+                                }}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-[#0F2544] hover:text-white text-slate-800 rounded-lg text-xs font-bold transition cursor-pointer"
+                              >
+                                View / Print
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
+              <span className="font-medium">
+                Viewing all active bills and quotations under {settings.ownerName || 'MIAN FARHAN ANWAR'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setDrillDownClient(null)}
+                className="px-4 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* LIFO PIN Protected Delete Modal */}
       <LifoDeleteModal

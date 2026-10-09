@@ -14,6 +14,8 @@ export interface ClientReportSummary {
   pstTotal: number;
   grandTotal: number;
   lastBillDate: string;
+  lastBillNo?: string;
+  lastBillAmount?: number;
 }
 
 /**
@@ -133,6 +135,11 @@ export function exportDocumentsToExcel(docs: DocumentRecord[], firmName: string 
 export function exportClientReportToExcel(clientSummaries: ClientReportSummary[], firmName: string = 'Enterprise') {
   const wb = XLSX.utils.book_new();
 
+  // Exclude zero-value clients from the professional report
+  const validSummaries = clientSummaries.filter(
+    (c) => c.grandTotal > 0 || c.billCount > 0 || c.goodsTotal > 0 || c.serviceTotal > 0
+  );
+
   const titleRow = [`${firmName.toUpperCase()} - CLIENT-WISE BILLING REPORT`];
   const dateRow = [`Generated on: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`];
   const blankRow: string[] = [];
@@ -145,11 +152,13 @@ export function exportClientReportToExcel(clientSummaries: ClientReportSummary[]
     'Total Bills',
     'Quotations',
     'Goods Value (PKR)',
-    'Federal GST 18% (PKR)',
+    'Federal GST (PKR)',
     'Services Value (PKR)',
-    'Punjab PST 16% (PKR)',
+    'Punjab PST (PKR)',
     'Grand Total Billed (PKR)',
+    'Last Bill #',
     'Last Bill Date',
+    'Last Bill Amount (PKR)',
   ];
 
   let sumBills = 0;
@@ -160,7 +169,7 @@ export function exportClientReportToExcel(clientSummaries: ClientReportSummary[]
   let sumPst = 0;
   let sumGrand = 0;
 
-  const dataRows = clientSummaries.map((c, i) => {
+  const dataRows = validSummaries.map((c, i) => {
     sumBills += c.billCount;
     sumQuotes += c.quoteCount;
     sumGoods += c.goodsTotal;
@@ -181,13 +190,15 @@ export function exportClientReportToExcel(clientSummaries: ClientReportSummary[]
       c.serviceTotal,
       c.pstTotal,
       c.grandTotal,
+      c.lastBillNo || '—',
       c.lastBillDate || '—',
+      c.lastBillAmount !== undefined && c.lastBillAmount > 0 ? c.lastBillAmount : '—',
     ];
   });
 
   const summaryRow = [
     'TOTAL',
-    `${clientSummaries.length} Clients`,
+    `${validSummaries.length} Active Clients`,
     '',
     '',
     sumBills,
@@ -197,6 +208,8 @@ export function exportClientReportToExcel(clientSummaries: ClientReportSummary[]
     sumServices,
     sumPst,
     sumGrand,
+    '',
+    '',
     '',
   ];
 
@@ -215,7 +228,9 @@ export function exportClientReportToExcel(clientSummaries: ClientReportSummary[]
     { wch: 20 }, // Services
     { wch: 20 }, // PST
     { wch: 24 }, // Grand Total
-    { wch: 14 }, // Last Bill
+    { wch: 14 }, // Last Bill #
+    { wch: 14 }, // Last Bill Date
+    { wch: 22 }, // Last Bill Amount
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Client Wise Report');

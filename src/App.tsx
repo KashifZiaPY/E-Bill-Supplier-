@@ -311,9 +311,12 @@ export default function App() {
         const dId = String(d.docId || d.DocID || '').trim();
         const dNo = String(d.docNo || d.DocNo || '').trim();
         const dType = String(d.type || d.Type || 'BILL').toUpperCase();
+        const dFirm = String(d.firmId || '').trim();
 
         if (docId && dId && dId === docId) return false;
-        if (docNo && dNo && dNo === docNo && dType === docType) return false;
+        if (docNo && dNo && dNo === docNo && dType === docType) {
+          if (!firmId || !dFirm || firmId === dFirm) return false;
+        }
         return true;
       })
     );
@@ -331,18 +334,14 @@ export default function App() {
 
     try {
       const res = await gasApi.deleteDoc(docId, docType, docNo, firmId);
-      if (res && res.remainingDocs) {
-        setDocs(res.remainingDocs);
-      }
       if (res && res.settings) {
         setSettings(res.settings);
       }
       showToast(`${docType} #${docNo} deleted successfully. Numbering rolled back (LIFO).`, 'success');
     } catch (err: any) {
-      console.error('Error during deleteDoc:', err);
-      showToast(err.message || 'Failed to delete document', 'error');
-      await loadBootstrapData();
-      throw err;
+      console.error('Error during deleteDoc sync with Google Sheet:', err);
+      // Keep document removed locally and notify user if Google Sheet sync had a temporary issue
+      showToast(`${docType} #${docNo} deleted locally. Note: Google Sheet sync offline.`, 'info');
     }
   };
 

@@ -95,7 +95,6 @@ export const PreviewScreen: React.FC<Props> = ({
             background: #ffffff !important;
             width: 100% !important;
             height: auto !important;
-            font-family: Arial, Helvetica, sans-serif !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
