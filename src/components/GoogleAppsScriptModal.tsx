@@ -111,39 +111,20 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.5.0',
+    version: '2.6.0',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
 }
 
 // -------------------------------------------------------------------------
-// CORE HANDLERS
+// ACTION HANDLERS
 // -------------------------------------------------------------------------
 
 function handleBootstrap(ss) {
-  var settings = loadSettings(ss) || {
-    ownerName: 'MIAN FARHAN ANWAR',
-    activeFirmId: 'firm-anwar-traders',
-    supplierName: 'Anwar Traders',
-    supplierTagline: 'General Order Suppliers & Govt Contractors',
-    supplierAddress: 'Suit # 14, 2nd Floor, Al-Rehman Centre, Bank Road, Rawalpindi',
-    supplierPhone: '0300-5123456 / 051-5551234',
-    supplierNTN: '1428392-7',
-    supplierGST: '07-01-9876-543-21',
-    vendorNo: 'V-40892',
-    gstRate: 0.18,
-    pstRate: 0.16,
-    letterheadTop: 2.5,
-    letterheadBottom: 1.5,
-    nextBillNo: '101',
-    nextQuoteNo: 'Q-201',
-    firms: []
-  };
-
+  var settings = loadSettings(ss);
   var clients = loadClients(ss);
   var docs = loadDocuments(ss);
-
   return {
     settings: settings,
     clients: clients,
@@ -152,16 +133,18 @@ function handleBootstrap(ss) {
 }
 
 function handleSaveDoc(ss, payload) {
-  var docData = payload.doc || payload;
+  // Accept every payload shape the clients send: { docData }, { doc }, or the doc itself.
+  var docData = payload.docData || payload.doc || payload;
   var docId = docData.docId || docData.DocID || ('doc-' + Date.now());
-  var docNo = docData.docNo || docData.DocNo || '';
-  var docType = (docData.type || docData.Type || 'BILL').toUpperCase();
-  var firmId = docData.firmId || 'firm-anwar-traders';
-  var firmName = docData.firmName || 'Anwar Traders';
+  var docNo = String(docData.docNo || docData.DocNo || '101').trim();
+  var docType = String(docData.type || docData.Type || 'BILL').toUpperCase();
+  var firmId = String(docData.firmId || 'firm-anwar-traders').trim();
+  var firmName = String(docData.firmName || 'Anwar Traders').trim();
 
   var docsSheet = ss.getSheetByName('Documents');
   var itemsSheet = ss.getSheetByName('Items');
 
+  var docHeaders = docsSheet.getRange(1, 1, 1, docsSheet.getLastColumn() || 1).getValues()[0];
   var docRowData = [
     docId,
     docNo,
@@ -339,6 +322,7 @@ function handleSaveClient(ss, payload) {
   var now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
   if (existingRow > 0) {
+    // Update existing row
     clientsSheet.getRange(existingRow, 3).setValue(address || clientsSheet.getRange(existingRow, 3).getValue());
     clientsSheet.getRange(existingRow, 4).setValue(ntn || clientsSheet.getRange(existingRow, 4).getValue());
     clientsSheet.getRange(existingRow, 5).setValue(strn || clientsSheet.getRange(existingRow, 5).getValue());
@@ -422,15 +406,15 @@ function loadSettings(ss) {
   }
 
   return {
-    ownerName: String(row[0] || 'MIAN FARHAN ANWAR'),
-    activeFirmId: String(row[1] || 'firm-anwar-traders'),
-    supplierName: String(row[2] || 'Anwar Traders'),
-    supplierTagline: String(row[3] || 'General Order Suppliers & Govt Contractors'),
-    supplierAddress: String(row[4] || ''),
-    supplierPhone: String(row[5] || ''),
-    supplierNTN: String(row[6] || ''),
-    supplierGST: String(row[7] || ''),
-    vendorNo: String(row[8] || ''),
+    ownerName: row[0] || 'MIAN FARHAN ANWAR',
+    activeFirmId: row[1] || 'firm-anwar-traders',
+    supplierName: row[2] || 'Anwar Traders',
+    supplierTagline: row[3] || 'General Order Suppliers & Govt Contractors',
+    supplierAddress: row[4] || '',
+    supplierPhone: row[5] || '',
+    supplierNTN: row[6] || '',
+    supplierGST: row[7] || '',
+    vendorNo: row[8] || '',
     gstRate: Number(row[9] || 0.18),
     pstRate: Number(row[10] || 0.16),
     letterheadTop: Number(row[11] || 2.5),
@@ -445,7 +429,6 @@ function loadClients(ss) {
   var sheet = ss.getSheetByName('Clients');
   var data = sheet.getDataRange().getValues();
   var clients = [];
-
   for (var i = 1; i < data.length; i++) {
     var r = data[i];
     if (!r) continue;
@@ -468,7 +451,7 @@ function loadClients(ss) {
       strn = String(r[4] || '').trim();
       lastUsed = String(r[5] || '').trim();
     } else {
-      // In user sheets where Col A is institution/client name and Col B is city/station
+      // Formats where Col A is institution/client name and Col B is city/station
       clientName = col0 || col1;
       address = col0 ? col1 : String(r[2] || '').trim();
       ntn = String(r[2] || r[3] || '').trim();
@@ -495,29 +478,30 @@ function loadDocuments(ss) {
   var docsSheet = ss.getSheetByName('Documents');
   var itemsSheet = ss.getSheetByName('Items');
 
+  var docsData = docsSheet.getDataRange().getValues();
   var itemsData = itemsSheet.getDataRange().getValues();
+
+  // Group line items by docId
   var itemsMap = {};
   for (var j = 1; j < itemsData.length; j++) {
-    var itemRow = itemsData[j];
-    var docId = String(itemRow[0] || '').trim();
+    var itRow = itemsData[j];
+    var docId = String(itRow[0] || '').trim();
     if (!docId) continue;
-
     if (!itemsMap[docId]) itemsMap[docId] = [];
+
     itemsMap[docId].push({
-      sr: Number(itemRow[1] || itemsMap[docId].length + 1),
-      description: String(itemRow[2] || ''),
-      unit: String(itemRow[3] || 'Nos'),
-      qty: Number(itemRow[4] || 1),
-      rate: Number(itemRow[5] || 0),
-      tax: String(itemRow[6] || 'GST'),
-      taxRate: Number(itemRow[7] || 0.18),
-      amount: Number(itemRow[8] || 0)
+      sr: Number(itRow[1] || 1),
+      description: String(itRow[2] || ''),
+      unit: String(itRow[3] || 'Nos'),
+      qty: Number(itRow[4] || 1),
+      rate: Number(itRow[5] || 0),
+      tax: String(itRow[6] || 'GST'),
+      taxRate: Number(itRow[7] || 0.18),
+      amount: Number(itRow[8] || 0)
     });
   }
 
-  var docsData = docsSheet.getDataRange().getValues();
   var docs = [];
-
   for (var i = 1; i < docsData.length; i++) {
     var r = docsData[i];
     var dId = String(r[0] || '').trim();
@@ -527,10 +511,10 @@ function loadDocuments(ss) {
       docId: dId,
       docNo: String(r[1] || ''),
       type: String(r[2] || 'BILL'),
-      firmId: String(r[3] || 'firm-anwar-traders'),
-      firmName: String(r[4] || 'Anwar Traders'),
-      date: String(r[5] || '').slice(0, 10),
-      clientName: String(r[6] || 'Client'),
+      firmId: String(r[3] || ''),
+      firmName: String(r[4] || ''),
+      date: String(r[5] || ''),
+      clientName: String(r[6] || ''),
       clientAddress: String(r[7] || ''),
       clientNTN: String(r[8] || ''),
       clientSTRN: String(r[9] || ''),
@@ -549,28 +533,73 @@ function loadDocuments(ss) {
   return docs;
 }
 
+/**
+ * Numeric part of a document number string ('Q-201' -> 201, '102' -> 102).
+ */
+function numPart(s) {
+  var n = parseInt(String(s == null ? '' : s).replace(/\D/g, ''), 10);
+  return isNaN(n) ? 0 : n;
+}
+
+/**
+ * Highest numeric document number currently stored for a firm + type.
+ * Used to keep numbering unique even when the history contains duplicates
+ * (e.g. written by an older client) or deletions.
+ */
+function getMaxDocNo(ss, firmId, docType) {
+  var sheet = ss.getSheetByName('Documents');
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var wantType = String(docType || 'BILL').toUpperCase();
+  var wantFirm = String(firmId || '').trim();
+  var max = 0;
+  for (var i = 0; i < data.length; i++) {
+    var rType = String(data[i][2] || 'BILL').toUpperCase();
+    if (rType !== wantType) continue;
+    var rFirm = String(data[i][3] || '').trim();
+    if (wantFirm && rFirm && rFirm !== wantFirm) continue;
+    var n = numPart(data[i][1]);
+    if (n > max) max = n;
+  }
+  return max;
+}
+
 function updateSequenceCounter(ss, firmId, docType, docNo, isRollback) {
   var settings = loadSettings(ss);
-  if (!settings) return null;
+  if (!settings) return;
 
   var currentFirms = settings.firms || [];
   var targetFirm = null;
   for (var i = 0; i < currentFirms.length; i++) {
-    if (currentFirms[i].id === firmId || 
-        (firmId && currentFirms[i].name && currentFirms[i].name.toLowerCase().includes(firmId.toLowerCase().replace('firm-', '').replace('-traders', '')))) {
+    if (currentFirms[i].id === firmId) {
       targetFirm = currentFirms[i];
       break;
     }
   }
 
-  var nextNoToSet = docNo;
-  if (!isRollback) {
-    var numericPart = parseInt(docNo.replace(/\\D/g, ''), 10);
-    if (!isNaN(numericPart)) {
-      var prefix = docNo.replace(/[0-9]/g, '');
-      nextNoToSet = prefix + (numericPart + 1);
-    }
+  var isBill = String(docType).toUpperCase() === 'BILL';
+  // Highest stored counter (top-level and firm-level should agree; trust the higher).
+  var storedNo = isBill ? String(settings.nextBillNo || '101') : String(settings.nextQuoteNo || 'Q-201');
+  if (targetFirm) {
+    var firmNo = isBill ? String(targetFirm.nextBillNo || '') : String(targetFirm.nextQuoteNo || '');
+    if (numPart(firmNo) > numPart(storedNo)) storedNo = firmNo;
   }
+  var prefix = storedNo.replace(/[0-9]/g, '');
+  if (!prefix && !isBill) prefix = 'Q-';
+
+  // Uniqueness rule: the next number is always one past the highest of the
+  // stored counter, the saved number, and every number still in the register.
+  // A delete therefore rolls back to (highest REMAINING + 1), reusing the
+  // deleted number only when it leaves no duplicate behind.
+  var maxExisting = getMaxDocNo(ss, firmId, docType);
+  var nextNum;
+  if (isRollback) {
+    nextNum = maxExisting > 0 ? maxExisting + 1 : numPart(docNo);
+    if (!nextNum) nextNum = isBill ? 101 : 201;
+  } else {
+    nextNum = Math.max(numPart(storedNo), maxExisting, numPart(docNo)) + 1;
+  }
+  var nextNoToSet = prefix + nextNum;
 
   if (targetFirm) {
     if (docType === 'BILL') {
@@ -580,7 +609,7 @@ function updateSequenceCounter(ss, firmId, docType, docNo, isRollback) {
     }
   }
 
-  if (settings.activeFirmId === firmId || currentFirms.length === 0) {
+  if (!settings.activeFirmId || settings.activeFirmId === firmId || currentFirms.length === 0) {
     if (docType === 'BILL') {
       settings.nextBillNo = nextNoToSet;
     } else {
@@ -697,6 +726,7 @@ function initSheetHeaders(sheet, name) {
     sheet.appendRow(headers);
   }
 
+  // Format header row
   var range = sheet.getRange(1, 1, 1, headers.length);
   range.setFontWeight('bold');
   range.setBackground('#F1F5F9');
@@ -735,19 +765,17 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white flex items-center justify-between shrink-0">
+        <div className="px-5 py-4 bg-navy-950 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-emerald-300">
-              <FileCode className="w-5 h-5 text-emerald-300" />
-            </div>
+            <span className="w-10 h-10 rounded-xl bg-white/5 border border-gold-500/40 flex items-center justify-center">
+              <FileCode className="w-5 h-5 text-gold-400" />
+            </span>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 uppercase">
-                  v2.5 Full Script
-                </span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing

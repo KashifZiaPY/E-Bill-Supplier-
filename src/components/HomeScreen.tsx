@@ -407,81 +407,77 @@ export const HomeScreen: React.FC<Props> = ({
   }, [clientReportSummaries, drillDownClient]);
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] flex flex-col justify-between">
-      {/* Executive Enterprise Header */}
-      <header className="bg-gradient-to-r from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white border-b border-blue-900/80 sticky top-0 z-30 shadow-md">
+    <div className="min-h-screen bg-paper flex flex-col">
+      {/* Corporate header */}
+      <header className="bg-navy-950 text-white sticky top-0 z-30 shadow-[0_2px_12px_rgba(12,28,51,0.35)]">
+        <div className="h-0.5 bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Owner & Group Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center font-black text-xl text-amber-300 shadow-inner">
+            <div className="w-11 h-11 rounded-xl bg-white/5 border border-gold-500/50 flex items-center justify-center font-extrabold text-lg text-gold-400">
               FA
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-black tracking-wide text-white">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-[17px] font-extrabold tracking-tight text-white">
                   {settings.ownerName || 'MIAN FARHAN ANWAR'}
                 </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 uppercase tracking-wider">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gold-500/15 text-gold-400 border border-gold-500/40 uppercase tracking-wider">
                   Enterprise Group
                 </span>
               </div>
-              <p className="text-xs text-blue-200 font-medium">
+              <p className="text-xs text-navy-200 font-medium">
                 Govt Contractors &amp; General Order Suppliers · Billing Portal
               </p>
             </div>
           </div>
 
-          {/* Firm Switcher & Top Actions */}
-          <div className="flex items-center gap-2.5">
-            {/* Firm Selector Dropdown */}
+          <div className="flex items-center gap-2">
             <div className="relative">
               <select
                 value={activeFirmId}
                 onChange={(e) => onSelectFirm(e.target.value)}
-                className="appearance-none bg-white/15 hover:bg-white/20 border border-white/25 rounded-xl px-3.5 py-1.5 pr-8 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer transition"
+                className="appearance-none bg-white/10 hover:bg-white/15 border border-white/20 rounded-xl pl-3.5 pr-9 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-gold-400/60 cursor-pointer transition"
               >
                 {firms.map((firm) => (
-                  <option key={firm.id} value={firm.id} className="text-slate-900 font-bold">
-                    🏢 {firm.name}
+                  <option key={firm.id} value={firm.id} className="text-ink-900 font-semibold">
+                    {firm.name}
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-4 h-4 text-white/80 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-4 h-4 text-white/70 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
 
-            {/* Local / Live Status */}
             {isOfflineMode ? (
               <button
                 onClick={onOpenSettings}
-                className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-400 text-slate-950 flex items-center gap-1.5 shadow-sm hover:bg-amber-300 transition cursor-pointer"
+                className="px-3 py-2 rounded-xl text-xs font-bold bg-gold-500 text-navy-950 flex items-center gap-1.5 hover:bg-gold-400 transition"
                 title="Google Sheet disconnected. Click to configure Web App URL in Settings."
               >
-                <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>
+                <span className="w-2 h-2 rounded-full bg-[#b3372f] animate-pulse" />
                 <span className="hidden md:inline">Connect Sheet</span>
               </button>
             ) : (
               <button
                 onClick={onRefresh}
-                className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 hover:bg-emerald-500/30 transition cursor-pointer"
-                title="Google Sheet Live Connected · Click to refresh live records"
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-400/10 text-emerald-300 border border-emerald-400/30 hover:bg-emerald-400/20 transition"
+                title="Google Sheet live connected · Click to refresh records"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span>Sheet Synced ({docs.length})</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>Synced · {docs.length} docs</span>
               </button>
             )}
 
             <button
               onClick={onRefresh}
-              className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
-              title="Refresh Records"
+              className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition"
+              title="Refresh records"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
-
             <button
               onClick={onLock}
-              className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
-              title="Lock Portal"
+              className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition"
+              title="Lock portal"
             >
               <Lock className="w-4 h-4" />
             </button>
@@ -489,287 +485,225 @@ export const HomeScreen: React.FC<Props> = ({
         </div>
       </header>
 
-      {/* Main Container */}
       <main className="max-w-6xl mx-auto px-4 py-5 w-full flex-1">
-        {/* KPI Analytics Cards: Distinct vibrant colors for immediate visual recognition */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
-          {/* Card 1: Active Entity -> Midnight Navy & Gold */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#0B1E36] via-[#103158] to-[#0A192F] text-white border border-blue-900 shadow-sm">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 block">
-              Active Entity
-            </span>
-            <div className="text-base sm:text-lg font-black text-white truncate mt-0.5">
-              {currentFirm.name}
-            </div>
-            <div className="text-[11px] text-amber-300 truncate mt-0.5 font-mono font-bold">
-              NTN: {currentFirm.ntn || '—'}
-            </div>
-          </div>
-
-          {/* Card 2: Total Billed -> Rich Vibrant Emerald Green */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-sm border border-emerald-500/80 hover:shadow-md transition">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-100 block">
-              Total Billed (PKR)
-            </span>
-            <div className="text-base sm:text-lg font-black font-mono text-white truncate mt-0.5">
-              Rs. {formatCurrency(analytics.totalBilled)}
-            </div>
-            <div className="text-[11px] text-emerald-200 mt-0.5 font-medium">
-              Across active orders
-            </div>
-          </div>
-
-          {/* Card 3: Federal GST Total -> Vibrant Royal Blue & Indigo */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-700 to-blue-800 text-white shadow-sm border border-blue-500/80 hover:shadow-md transition">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-100 block">
-                Federal GST (18%)
+        {/* KPI cards — restrained corporate */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+          <div className="corp-card p-4">
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-lg bg-navy-900 text-gold-400 flex items-center justify-center shrink-0">
+                <Building2 className="w-4.5 h-4.5" />
               </span>
-              <span className="w-2 h-2 rounded-full bg-blue-300"></span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500 leading-tight">Active<br />Entity</span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-white truncate mt-0.5">
-              Rs. {formatCurrency(analytics.totalGst)}
-            </div>
-            <div className="text-[11px] text-blue-200 mt-0.5 font-medium">
-              Sales Tax on Goods
-            </div>
+            <div className="text-[15px] font-extrabold text-ink-900 truncate mt-2.5">{currentFirm.name}</div>
+            <div className="text-[11px] text-ink-500 font-mono font-semibold mt-0.5">NTN: {currentFirm.ntn || '—'}</div>
           </div>
 
-          {/* Card 4: Punjab PST Total -> Warm Amber & Orange */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 text-white shadow-sm border border-amber-500/80 hover:shadow-md transition">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-100 block">
-                Punjab PST (16%)
+          <div className="corp-card p-4">
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-4.5 h-4.5" />
               </span>
-              <span className="w-2 h-2 rounded-full bg-amber-200"></span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500 leading-tight">Total<br />Billed</span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-white truncate mt-0.5">
-              Rs. {formatCurrency(analytics.totalPst)}
-            </div>
-            <div className="text-[11px] text-amber-200 mt-0.5 font-medium">
-              Sales Tax on Services
-            </div>
+            <div className="text-[15px] font-extrabold font-mono text-ink-900 truncate mt-2.5">Rs. {formatCurrency(analytics.totalBilled)}</div>
+            <div className="text-[11px] text-ink-400 mt-0.5">Across active orders</div>
           </div>
 
-          {/* Card 5: Documents Register -> Rich Purple & Plum */}
-          <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-gradient-to-br from-purple-700 via-indigo-800 to-purple-900 text-white shadow-sm border border-purple-600/80 hover:shadow-md transition">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-200 block">
-              Documents Register
-            </span>
-            <div className="text-base sm:text-lg font-black text-white mt-0.5">
-              {analytics.billCount} Bills <span className="text-purple-300 font-normal">/</span> {analytics.quoteCount} Quotes
+          <div className="corp-card p-4">
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-lg bg-navy-50 text-navy-700 flex items-center justify-center shrink-0">
+                <Receipt className="w-4.5 h-4.5" />
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500 leading-tight">Federal<br />GST 18%</span>
             </div>
-            <div className="text-[11px] text-purple-200 mt-0.5 font-medium">
-              {clients.length} Saved Clients
+            <div className="text-[15px] font-extrabold font-mono text-ink-900 truncate mt-2.5">Rs. {formatCurrency(analytics.totalGst)}</div>
+            <div className="text-[11px] text-ink-400 mt-0.5">Sales tax on goods</div>
+          </div>
+
+          <div className="corp-card p-4">
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-lg bg-gold-100 text-gold-700 flex items-center justify-center shrink-0">
+                <CreditCard className="w-4.5 h-4.5" />
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500 leading-tight">Punjab<br />PST 16%</span>
             </div>
+            <div className="text-[15px] font-extrabold font-mono text-ink-900 truncate mt-2.5">Rs. {formatCurrency(analytics.totalPst)}</div>
+            <div className="text-[11px] text-ink-400 mt-0.5">Sales tax on services</div>
+          </div>
+
+          <div className="corp-card p-4 col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-lg bg-navy-50 text-navy-700 flex items-center justify-center shrink-0">
+                <FileText className="w-4.5 h-4.5" />
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500 leading-tight">Documents<br />Register</span>
+            </div>
+            <div className="text-[15px] font-extrabold text-ink-900 mt-2.5">
+              {analytics.billCount} <span className="font-semibold text-ink-400 text-xs">Bills</span>
+              <span className="text-ink-400 mx-1">·</span>
+              {analytics.quoteCount} <span className="font-semibold text-ink-400 text-xs">Quotes</span>
+            </div>
+            <div className="text-[11px] text-ink-400 mt-0.5">{clients.length} saved clients</div>
           </div>
         </div>
 
-        {/* Big Action Launchers with distinctive colored identities */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-6">
+        {/* Primary actions */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
           <button
             onClick={onNewBill}
-            className="group p-5 rounded-2xl bg-gradient-to-br from-[#0B1E36] via-[#123663] to-[#0B1E36] hover:from-[#102C4E] hover:to-[#163D6D] active:scale-[0.99] text-white flex flex-col justify-between shadow-md hover:shadow-xl border border-blue-800/40 transition cursor-pointer text-left h-28"
+            className="group p-5 rounded-2xl bg-navy-900 hover:bg-navy-950 active:scale-[0.99] text-white flex items-center justify-between shadow-[0_8px_20px_-8px_rgba(12,28,51,0.5)] transition text-left"
           >
-            <div className="flex justify-between items-start">
-              <span className="p-2 rounded-xl bg-white/15 text-white">
-                <FilePlus className="w-5 h-5 text-emerald-400" />
-              </span>
-              <span className="text-xs font-bold uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/40 px-2 py-0.5 rounded-md">
-                Next #{currentFirm.nextBillNo || '101'}
-              </span>
-            </div>
             <div>
-              <div className="text-lg font-black tracking-tight text-white">Create New Bill</div>
-              <p className="text-xs text-blue-200 font-medium">Under {currentFirm.name}</p>
+              <div className="text-[17px] font-extrabold tracking-tight">Create New Bill</div>
+              <p className="text-xs text-navy-200 font-medium mt-0.5">Under {currentFirm.name}</p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <span className="corp-chip bg-gold-500 text-navy-950">Next #{currentFirm.nextBillNo || '101'}</span>
+              <span className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center group-hover:bg-white/15 transition">
+                <FilePlus className="w-5 h-5 text-gold-400" />
+              </span>
             </div>
           </button>
 
           <button
             onClick={onNewQuotation}
-            className="group p-5 rounded-2xl bg-gradient-to-br from-[#78350F] via-[#92400E] to-[#78350F] hover:from-[#853C12] hover:to-[#A14710] active:scale-[0.99] text-white flex flex-col justify-between shadow-md hover:shadow-xl border border-amber-800/50 transition cursor-pointer text-left h-28"
+            className="group corp-card p-5 hover:border-gold-500/60 active:scale-[0.99] flex items-center justify-between transition text-left"
           >
-            <div className="flex justify-between items-start">
-              <span className="p-2 rounded-xl bg-white/15 text-white">
-                <FileText className="w-5 h-5 text-amber-300" />
-              </span>
-              <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md text-amber-100">
-                Next #{currentFirm.nextQuoteNo || 'Q-201'}
-              </span>
-            </div>
             <div>
-              <div className="text-lg font-black tracking-tight text-white">New Quotation</div>
-              <p className="text-xs text-amber-200 font-medium">Rate estimate with 7-day validity</p>
+              <div className="text-[17px] font-extrabold tracking-tight text-ink-900">New Quotation</div>
+              <p className="text-xs text-ink-500 font-medium mt-0.5">Rate estimate · 7-day validity</p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <span className="corp-chip bg-navy-50 text-navy-800 border border-navy-100">Next #{currentFirm.nextQuoteNo || 'Q-201'}</span>
+              <span className="w-10 h-10 rounded-xl bg-gold-100 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-gold-700" />
+              </span>
             </div>
           </button>
 
           <button
             onClick={onOpenSettings}
-            className="group p-5 rounded-2xl bg-gradient-to-br from-[#1E293B] via-[#0F766E] to-[#1E293B] hover:from-[#243349] hover:to-[#115E59] active:scale-[0.99] text-white border border-teal-800/50 flex flex-col justify-between shadow-md hover:shadow-xl transition cursor-pointer text-left h-28"
+            className="group corp-card p-5 hover:border-navy-200 active:scale-[0.99] flex items-center justify-between transition text-left"
           >
-            <div className="flex justify-between items-start">
-              <span className="p-2 rounded-xl bg-white/15 text-white">
-                <Settings className="w-5 h-5 text-teal-300" />
-              </span>
-              <span className="text-xs font-bold text-teal-200 bg-white/15 px-2 py-0.5 rounded-md">
-                {firms.length} Firms Active
-              </span>
-            </div>
             <div>
-              <div className="text-lg font-black tracking-tight text-white">Manage Profiles</div>
-              <p className="text-xs text-teal-200 font-medium">Print margins, NTN &amp; settings</p>
+              <div className="text-[17px] font-extrabold tracking-tight text-ink-900">Manage Profiles</div>
+              <p className="text-xs text-ink-500 font-medium mt-0.5">Print margins, NTN &amp; settings</p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <span className="corp-chip bg-navy-50 text-navy-800 border border-navy-100">{firms.length} firms active</span>
+              <span className="w-10 h-10 rounded-xl bg-navy-50 flex items-center justify-center">
+                <Settings className="w-5 h-5 text-navy-700" />
+              </span>
             </div>
           </button>
         </div>
 
-        {/* Workspace Card (Tabs: Documents vs Clients) */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
-          {/* Header Controls */}
-          <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            {/* Primary Tab Switcher */}
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <button
-                onClick={() => setActiveTab('DOCUMENTS')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                  activeTab === 'DOCUMENTS'
-                    ? 'bg-[#0F2544] text-white shadow-sm ring-1 ring-[#0F2544]'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                <span>Documents Register</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('CLIENTS')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                  activeTab === 'CLIENTS'
-                    ? 'bg-[#0F2544] text-white shadow-sm ring-1 ring-[#0F2544]'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                <span>Clients Directory ({clients.length})</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('REPORTS')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                  activeTab === 'REPORTS'
-                    ? 'bg-[#0F2544] text-white shadow-sm ring-1 ring-[#0F2544]'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <BarChart3 className="w-4 h-4 text-emerald-500" />
-                <span>Client Billing Report ({clientReportSummaries.length})</span>
-              </button>
+        {/* Workspace */}
+        <div className="corp-card overflow-hidden">
+          <div className="p-4 border-b border-line flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1.5 bg-paper p-1 rounded-xl self-start">
+              {([
+                ['DOCUMENTS', FileText, `Documents`],
+                ['CLIENTS', Users, `Clients (${clients.length})`],
+                ['REPORTS', BarChart3, `Reports (${clientReportSummaries.length})`],
+              ] as const).map(([tab, Icon, label]) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab as typeof activeTab)}
+                  className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition ${
+                    activeTab === tab
+                      ? 'bg-navy-900 text-white shadow-sm'
+                      : 'text-ink-500 hover:text-ink-900 hover:bg-white'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{label}</span>
+                </button>
+              ))}
             </div>
 
-            {/* Right side: Search & Filter & Export Controls */}
             <div className="flex flex-wrap items-center gap-2">
               {activeTab === 'DOCUMENTS' && (
                 <>
-                  <div className="flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-bold">
+                  <div className="flex items-center bg-paper p-1 rounded-xl text-xs font-bold border border-line">
                     {(['ALL', 'BILL', 'QUOTATION'] as const).map((filter) => (
                       <button
                         key={filter}
                         onClick={() => setDocFilter(filter)}
-                        className={`px-2.5 py-1.5 rounded-lg transition cursor-pointer ${
-                          docFilter === filter
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-500 hover:text-slate-900'
+                        className={`px-3 py-1.5 rounded-lg transition ${
+                          docFilter === filter ? 'bg-white text-ink-900 shadow-sm border border-line' : 'text-ink-500 hover:text-ink-900'
                         }`}
                       >
-                        {filter}
+                        {filter === 'QUOTATION' ? 'QUOTES' : filter}
                       </button>
                     ))}
                   </div>
-
                   <button
                     onClick={() => exportDocumentsToExcel(filteredDocs, currentFirm.name)}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer border border-emerald-500"
-                    title="Export Documents Register to Excel (.xlsx)"
+                    className="corp-btn-ghost !py-2 text-emerald-700 !border-emerald-200 hover:!bg-emerald-50 text-xs"
+                    title="Export register to Excel (.xlsx)"
                   >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-white" />
-                    <span className="hidden sm:inline">Export Excel</span>
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span className="hidden sm:inline">Excel</span>
                   </button>
                 </>
               )}
-
               {activeTab === 'CLIENTS' && (
-                <button
-                  onClick={onOpenAddClient}
-                  className="px-3 py-1.5 rounded-xl bg-[#0F2544] text-white text-xs font-bold flex items-center gap-1.5 hover:bg-[#163866] transition cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
+                <button onClick={onOpenAddClient} className="corp-btn-primary !py-2 text-xs">
+                  <Plus className="w-4 h-4" />
                   <span>Add Client</span>
                 </button>
               )}
-
               {activeTab === 'REPORTS' && (
                 <button
                   onClick={() => exportClientReportToExcel(filteredClientReport, currentFirm.name)}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                  title="Export Client-Wise Billing Report to Excel (.xlsx)"
+                  className="corp-btn-ghost !py-2 text-emerald-700 !border-emerald-200 hover:!bg-emerald-50 text-xs"
+                  title="Export client-wise report to Excel (.xlsx)"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Export Report (.xlsx)</span>
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Export Report</span>
                 </button>
               )}
-
-              {/* Omnisearch Box */}
-              <div className="relative w-full sm:w-60 md:w-72">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={
-                    activeTab === 'DOCUMENTS'
-                      ? 'Search Doc#, Bill#, Value, Client...'
-                      : activeTab === 'CLIENTS'
-                      ? 'Search client name, NTN, address...'
-                      : 'Search client report...'
-                  }
-                  className="w-full pl-9 pr-8 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none text-slate-800 placeholder:text-slate-400 transition"
+                  placeholder={activeTab === 'DOCUMENTS' ? 'Search bill #, client, amount…' : activeTab === 'CLIENTS' ? 'Search name, NTN, address…' : 'Search report…'}
+                  className="corp-input !py-2 pl-9 pr-9 text-xs"
                 />
                 {searchQuery ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setSearchQuery('');
-                      searchInputRef.current?.focus();
-                    }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer"
+                    onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-900 p-0.5 rounded"
                     title="Clear search"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 ) : (
-                  <span className="hidden lg:inline-block absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded font-mono pointer-events-none">
-                    /
-                  </span>
+                  <kbd className="hidden lg:block absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-ink-400 bg-paper border border-line px-1.5 py-0.5 rounded font-mono pointer-events-none">/</kbd>
                 )}
               </div>
             </div>
           </div>
 
-          {/* TAB 1: DOCUMENTS REGISTER */}
+          {/* DOCUMENTS */}
           {activeTab === 'DOCUMENTS' && (
             <>
               {filteredDocs.length === 0 ? (
-                <div className="p-12 text-center text-slate-500">
-                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="font-bold text-slate-700">No documents found</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {searchQuery
-                      ? 'No documents match your search criteria.'
-                      : 'Create your first Bill or Quotation above.'}
-                  </p>
+                <div className="p-14 text-center">
+                  <span className="w-14 h-14 rounded-2xl bg-navy-50 text-navy-300 flex items-center justify-center mx-auto mb-4">
+                    <FileText className="w-7 h-7" />
+                  </span>
+                  <p className="font-bold text-ink-900">No documents found</p>
+                  <p className="text-xs text-ink-400 mt-1">{searchQuery ? 'Nothing matches your search.' : 'Create your first bill or quotation above.'}</p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100 pb-32 sm:pb-24">
+                <div className="divide-y divide-line pb-28 sm:pb-6">
                   {filteredDocs.map((doc, docIdx) => {
                     const docId = String(doc.docId || doc.DocID || '');
                     const docNo = String(doc.docNo || doc.DocNo || '—');
@@ -782,196 +716,110 @@ export const HomeScreen: React.FC<Props> = ({
                     const isMenuOpen = activeMenuDocId === docId;
                     const docFirmId = doc.firmId || (String(doc.firmName || '').toLowerCase().includes('hashir') ? 'firm-hashir-traders' : 'firm-anwar-traders');
                     const firmName = String(doc.firmName || (docFirmId === 'firm-hashir-traders' ? 'Hashir Traders' : 'Anwar Traders'));
-                    // Strict firm-isolated LIFO candidate check: Only the single latest serial entry for this specific firm is LIFO
                     const isLastLIFO = isLastDocLIFO(doc, docs, docFirmId);
                     const isBottomEntry = docIdx >= filteredDocs.length - 1 || (filteredDocs.length > 2 && docIdx >= filteredDocs.length - 2);
 
                     return (
                       <div
                         key={docId}
-                        className={`p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-default ${
-                          isMenuOpen ? 'z-50 relative bg-slate-50/90 shadow-xs' : 'relative z-10'
-                        } ${
-                          isCancelled
-                            ? 'bg-slate-50/80 text-slate-400 opacity-60'
-                            : 'hover:bg-slate-50/70 text-slate-900'
-                        }`}
+                        className={`px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                          isMenuOpen ? 'relative z-20 bg-navy-50/60' : 'relative'
+                        } ${isCancelled ? 'opacity-55 bg-paper/60' : 'hover:bg-navy-50/40'}`}
                       >
-                        {/* Left Details - Standard text without hover hand sign */}
-                        <div className="flex-1 min-w-0 cursor-default select-text">
-                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                            <span
-                              className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${
-                                docType === 'BILL'
-                                  ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                                  : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                              }`}
-                            >
-                              {docType}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                            <span className={`corp-chip ${docType === 'BILL' ? 'bg-navy-900 text-white' : 'bg-gold-100 text-gold-700 border border-gold-200'}`}>
+                              {docType} #{docNo}
                             </span>
-                            <span className="text-xs font-mono font-bold text-slate-500">
-                              #{docNo}
-                            </span>
-                            <span className="text-xs text-slate-500 font-medium">
-                              {date}
-                            </span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                              {firmName}
-                            </span>
+                            <span className="text-xs text-ink-400 font-medium">{date}</span>
+                            <span className="text-[11px] font-semibold text-ink-500">{firmName}</span>
                             {isLastLIFO && (
-                              <span
-                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs"
-                                title="Latest entry in LIFO sequence (eligible for deletion under PIN)"
-                              >
+                              <span className="corp-chip bg-gold-100 text-gold-700 border border-gold-300" title="Latest entry — eligible for PIN-protected deletion">
                                 Latest (LIFO)
                               </span>
                             )}
                             {isCancelled && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700">
-                                Cancelled
-                              </span>
+                              <span className="corp-chip bg-red-50 text-[#b3372f] border border-red-200">Cancelled</span>
                             )}
                           </div>
-
-                          <div className="text-sm sm:text-base font-bold text-slate-900 truncate">
-                            {client}
-                          </div>
-
+                          <div className="text-[15px] font-bold text-ink-900 truncate">{client}</div>
                           {(doc.refText || doc.RefText) && (
-                            <div className="text-xs text-slate-500 truncate mt-0.5 font-medium">
-                              {String(doc.refText || doc.RefText)}
-                            </div>
+                            <div className="text-xs text-ink-400 truncate mt-0.5">{String(doc.refText || doc.RefText)}</div>
                           )}
                         </div>
 
-                        {/* Right: Grand Total & Actions */}
-                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-slate-100 cursor-default">
-                          <div className="text-right cursor-default">
-                            <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">
-                              Grand Total
-                            </span>
-                            <span className="text-base sm:text-lg font-black text-slate-900 font-mono">
-                              Rs. {formatCurrency(total)}
-                            </span>
+                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-line">
+                          <div className="text-right">
+                            <span className="text-[10px] text-ink-400 block uppercase font-bold tracking-wider">Grand Total</span>
+                            <span className="text-[17px] font-extrabold text-ink-900 font-mono">Rs. {formatCurrency(total)}</span>
                           </div>
-
-                          {/* Quick Action buttons */}
                           <div className="flex items-center gap-1.5">
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectDoc(doc);
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                              title="View & Print Document"
+                              onClick={(e) => { e.stopPropagation(); onSelectDoc(doc); }}
+                              className="corp-btn-ghost !px-3 !py-2 text-xs"
+                              title="View & print"
                             >
-                              <Printer className="w-3.5 h-3.5 text-slate-600" />
-                              <span>View</span>
+                              <Eye className="w-3.5 h-3.5" /><span>View</span>
                             </button>
-
                             {!isCancelled && (
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onEditDoc(doc);
-                                }}
-                                className="px-2.5 py-1.5 rounded-lg bg-[#0F2544]/10 hover:bg-[#0F2544]/20 active:bg-[#0F2544]/30 text-[#0F2544] text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                                title="Edit Document"
+                                onClick={(e) => { e.stopPropagation(); onEditDoc(doc); }}
+                                className="corp-btn-ghost !px-3 !py-2 text-xs !text-navy-800 !border-navy-200"
+                                title="Edit document"
                               >
-                                <Edit className="w-3.5 h-3.5" />
-                                <span>Edit</span>
+                                <Edit className="w-3.5 h-3.5" /><span>Edit</span>
                               </button>
                             )}
-
-                            {/* Menu button */}
                             <div className="relative">
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMenuDocId(isMenuOpen ? null : docId);
-                                }}
-                                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-200 rounded-lg transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
-                                aria-label="Actions"
-                                title="Document options"
+                                onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(isMenuOpen ? null : docId); }}
+                                className="p-2 text-ink-400 hover:text-ink-900 hover:bg-paper rounded-xl transition min-w-[36px] min-h-[36px] flex items-center justify-center"
+                                aria-label="More actions"
                               >
                                 <MoreVertical className="w-5 h-5" />
                               </button>
-
-                            {/* Dropdown Menu */}
-                            {isMenuOpen && (
-                              <>
-                                <div
-                                  className="fixed inset-0 z-40"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveMenuDocId(null);
-                                  }}
-                                />
-                                <div className={`absolute right-0 ${isBottomEntry ? 'bottom-full mb-2 origin-bottom-right' : 'top-full mt-1.5 origin-top-right'} w-52 sm:w-56 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-slate-200 z-50 py-1.5 text-xs font-semibold ring-1 ring-black/5 animate-in fade-in`}>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveMenuDocId(null);
-                                      onDuplicateDoc(doc);
-                                    }}
-                                    className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-slate-700 cursor-pointer"
-                                  >
-                                    <Copy className="w-4 h-4 text-slate-400" />
-                                    <span>Duplicate Record</span>
-                                  </button>
-
-                                  {docType === 'QUOTATION' && !isCancelled && (
+                              {isMenuOpen && (
+                                <>
+                                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); }} />
+                                  <div className={`absolute right-0 ${isBottomEntry ? 'bottom-full mb-2' : 'top-full mt-1.5'} w-56 bg-white rounded-xl shadow-[0_16px_40px_-8px_rgba(12,28,51,0.3)] border border-line z-50 py-1.5 text-[13px] font-medium`}>
                                     <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveMenuDocId(null);
-                                        onMakeBillFromQuotation(doc);
-                                      }}
-                                      className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center gap-2 text-[#0F2544] font-bold cursor-pointer"
+                                      onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); onDuplicateDoc(doc); }}
+                                      className="w-full px-3.5 py-2.5 text-left hover:bg-paper flex items-center gap-2.5 text-ink-700"
                                     >
-                                      <FilePlus className="w-4 h-4 text-[#0F2544]" />
-                                      <span>Convert into Bill</span>
+                                      <Copy className="w-4 h-4 text-ink-400" /><span>Duplicate record</span>
                                     </button>
-                                  )}
-
-                                  {!isCancelled && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveMenuDocId(null);
-                                        if (confirm(`Are you sure you want to cancel ${docType} #${docNo}?`)) {
-                                          onCancelDoc(docId);
-                                        }
-                                      }}
-                                      className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer border-t border-slate-100"
-                                    >
-                                      <Ban className="w-4 h-4 text-rose-500" />
-                                      <span>Cancel Document</span>
-                                    </button>
-                                  )}
-
-                                  {/* LIFO Protected Deletion: STRICTLY ONLY rendered for the last entry in sequence */}
-                                  {isLastLIFO && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveMenuDocId(null);
-                                        handleOpenLifoDelete(doc);
-                                      }}
-                                      className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2 cursor-pointer border-t border-rose-100 font-bold"
-                                      title="LIFO Protected Deletion: Only the last recorded entry may be deleted under PIN authorization"
-                                    >
-                                      <Trash2 className="w-4 h-4 text-rose-600" />
-                                      <span>Delete Record (LIFO)</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </>
-                            )}
+                                    {docType === 'QUOTATION' && !isCancelled && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); onMakeBillFromQuotation(doc); }}
+                                        className="w-full px-3.5 py-2.5 text-left hover:bg-navy-50 flex items-center gap-2.5 text-navy-800 font-semibold"
+                                      >
+                                        <FilePlus className="w-4 h-4" /><span>Convert into bill</span>
+                                      </button>
+                                    )}
+                                    {!isCancelled && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); if (confirm(`Cancel ${docType} #${docNo}?`)) onCancelDoc(docId); }}
+                                        className="w-full px-3.5 py-2.5 text-left hover:bg-red-50 text-[#b3372f] flex items-center gap-2.5 border-t border-line"
+                                      >
+                                        <Ban className="w-4 h-4" /><span>Cancel document</span>
+                                      </button>
+                                    )}
+                                    {isLastLIFO && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); handleOpenLifoDelete(doc); }}
+                                        className="w-full px-3.5 py-2.5 text-left hover:bg-red-50 text-[#b3372f] flex items-center gap-2.5 border-t border-red-100 font-semibold"
+                                        title="Only the last recorded entry may be deleted under PIN authorization"
+                                      >
+                                        <Trash2 className="w-4 h-4" /><span>Delete record (LIFO)</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
                     );
                   })}
                 </div>
@@ -979,26 +827,23 @@ export const HomeScreen: React.FC<Props> = ({
             </>
           )}
 
-          {/* TAB 2: CLIENT DIRECTORY & MANAGEMENT */}
+          {/* CLIENTS */}
           {activeTab === 'CLIENTS' && (
-            <div className="divide-y divide-slate-100">
-              <div className="p-3 bg-blue-50/60 border-b border-blue-100 flex items-center justify-between text-xs text-blue-900 px-4">
-                <span className="font-semibold flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                  Clients are automatically remembered and synced from Bills and the Google Sheet Clients registry.
+            <div className="divide-y divide-line">
+              <div className="px-4 py-3 bg-navy-50/60 border-b border-line flex items-center justify-between text-xs">
+                <span className="font-semibold text-navy-800 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-navy-600" />
+                  Synced automatically from bills &amp; the Google Sheet registry
                 </span>
-                <span className="text-[11px] font-bold text-blue-700">
-                  {clients.length} Total Registered
-                </span>
+                <span className="text-[11px] font-bold text-navy-700">{clients.length} registered</span>
               </div>
-
               {filteredClients.length === 0 ? (
-                <div className="p-12 text-center text-slate-500">
-                  <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="font-bold text-slate-700">No clients registered</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Clients are saved automatically when creating bills, or you can add them manually above.
-                  </p>
+                <div className="p-14 text-center">
+                  <span className="w-14 h-14 rounded-2xl bg-navy-50 text-navy-300 flex items-center justify-center mx-auto mb-4">
+                    <Users className="w-7 h-7" />
+                  </span>
+                  <p className="font-bold text-ink-900">No clients found</p>
+                  <p className="text-xs text-ink-400 mt-1">Add one manually, or save a bill to register a client.</p>
                 </div>
               ) : (
                 filteredClients.map((client: any, idx) => {
@@ -1007,56 +852,27 @@ export const HomeScreen: React.FC<Props> = ({
                   const cStrn = String(client?.strn || client?.STRN || '');
                   const cAddr = String(client?.address || client?.Address || client?.clientAddress || client?.ClientAddress || '');
                   const cLastUsed = String(client?.lastUsed || client?.LastUsed || '');
-
                   return (
-                    <div
-                      key={client?.id || cName + idx}
-                      className="p-4 hover:bg-slate-50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
+                    <div key={client?.id || cName + idx} className="px-4 py-3.5 hover:bg-navy-50/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm sm:text-base text-slate-900">
-                            {cName}
-                          </span>
-                          {cNtn && (
-                            <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
-                              NTN: {cNtn}
-                            </span>
-                          )}
-                          {cStrn && (
-                            <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              STRN: {cStrn}
-                            </span>
-                          )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-bold text-[15px] text-ink-900">{cName}</span>
+                          {cNtn && <span className="corp-chip bg-navy-50 text-navy-800 border border-navy-100 font-mono">NTN {cNtn}</span>}
+                          {cStrn && <span className="corp-chip bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono">STRN {cStrn}</span>}
                         </div>
-                        <p className="text-xs text-slate-500 mt-1 truncate">
-                          {cAddr || 'No office address specified'}
-                        </p>
-                        {cLastUsed && (
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            Last active: {cLastUsed}
-                          </p>
-                        )}
+                        <p className="text-xs text-ink-400 mt-1 truncate">{cAddr || 'No office address specified'}</p>
+                        {cLastUsed && <p className="text-[10px] text-ink-400 mt-0.5">Last active · {cLastUsed}</p>}
                       </div>
-
-                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                        <button
-                          onClick={() => onEditClient(client)}
-                          className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          <span>Edit</span>
+                      <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                        <button onClick={() => onEditClient(client)} className="corp-btn-ghost !px-3 !py-2 text-xs">
+                          <Edit className="w-3.5 h-3.5" /><span>Edit</span>
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm(`Remove client ${cName}?`)) {
-                              onDeleteClient(client?.id || '', cName);
-                            }
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete Client"
+                          onClick={() => { if (confirm(`Remove client ${cName}?`)) onDeleteClient(client?.id || '', cName); }}
+                          className="p-2 text-ink-400 hover:text-[#b3372f] rounded-xl hover:bg-red-50 transition"
+                          title="Delete client"
                         >
-                          <Ban className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -1066,233 +882,121 @@ export const HomeScreen: React.FC<Props> = ({
             </div>
           )}
 
-          {/* TAB 3: CLIENT-WISE BILLING & TAX REPORT */}
+          {/* REPORTS */}
           {activeTab === 'REPORTS' && (
             <div>
-              {/* Report Top Sub-Header & Summary Stats */}
-              <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-[#0F2544] to-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
-                      <BarChart3 className="w-5 h-5" />
-                    </span>
-                    <h2 className="text-base sm:text-lg font-bold tracking-tight">
-                      Client-Wise Total Billing &amp; Tax Report
-                    </h2>
+              <div className="px-4 sm:px-5 py-4 bg-navy-950 text-white flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="w-10 h-10 rounded-xl bg-white/5 border border-gold-500/40 flex items-center justify-center">
+                    <BarChart3 className="w-5 h-5 text-gold-400" />
+                  </span>
+                  <div>
+                    <h2 className="text-[15px] font-extrabold tracking-tight">Client-Wise Billing &amp; Tax Report</h2>
+                    <p className="text-xs text-navy-200">Bills, goods value, GST &amp; PST per client</p>
                   </div>
-                  <p className="text-xs text-slate-300 mt-1 max-w-xl">
-                    Consolidated breakdown of total bills, goods subtotal, sales taxes (Federal GST &amp; Punjab PST), and gross billed amounts per client.
-                  </p>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
-                  <button
-                    onClick={() => exportClientReportToExcel(filteredClientReport, currentFirm.name)}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition cursor-pointer"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    <span>Export Client Report (.xlsx)</span>
-                  </button>
-                </div>
+                <button
+                  onClick={() => exportClientReportToExcel(filteredClientReport, currentFirm.name)}
+                  className="corp-btn-gold !py-2 text-xs self-start md:self-auto"
+                >
+                  <FileSpreadsheet className="w-4 h-4" /><span>Export .xlsx</span>
+                </button>
               </div>
 
-              {/* Metric Overview Row */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-4 bg-slate-50 border-b border-slate-200">
-                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-                  <span className="text-[10px] font-bold uppercase text-slate-500 block">
-                    Clients in Report
-                  </span>
-                  <div className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
-                    {filteredClientReport.length} <span className="text-xs font-medium text-slate-500">Clients</span>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-4 bg-paper border-b border-line">
+                {[
+                  ['Clients in report', `${filteredClientReport.length}`, `${reportTotals.totalBills} bills · ${reportTotals.totalQuotes} quotes`, 'text-ink-900'],
+                  ['Total billed (PKR)', `Rs. ${formatCurrency(reportTotals.totalGrand)}`, 'All active invoices', 'text-ink-900'],
+                  ['Federal GST 18%', `Rs. ${formatCurrency(reportTotals.totalGst)}`, `Goods Rs. ${formatCurrency(reportTotals.totalGoods)}`, 'text-navy-800'],
+                  ['Punjab PST 16%', `Rs. ${formatCurrency(reportTotals.totalPst)}`, `Services Rs. ${formatCurrency(reportTotals.totalServices)}`, 'text-emerald-800'],
+                ].map(([label, value, sub, cls]) => (
+                  <div key={label as string} className="corp-card p-3.5">
+                    <span className="corp-label !mb-1">{label}</span>
+                    <div className={`text-[16px] font-extrabold font-mono ${cls}`}>{value}</div>
+                    <div className="text-[11px] text-ink-400 mt-0.5">{sub}</div>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    {reportTotals.totalBills} Bills · {reportTotals.totalQuotes} Quotes
-                  </div>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-                  <span className="text-[10px] font-bold uppercase text-slate-500 block">
-                    Total Billed (PKR)
-                  </span>
-                  <div className="text-base sm:text-lg font-black font-mono text-[#0F2544] mt-0.5">
-                    Rs. {formatCurrency(reportTotals.totalGrand)}
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    All active client invoices
-                  </div>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-                  <span className="text-[10px] font-bold uppercase text-blue-900 block">
-                    Federal GST (18%)
-                  </span>
-                  <div className="text-base sm:text-lg font-black font-mono text-blue-800 mt-0.5">
-                    Rs. {formatCurrency(reportTotals.totalGst)}
-                  </div>
-                  <div className="text-[11px] text-blue-700/80 mt-0.5">
-                    Goods: Rs. {formatCurrency(reportTotals.totalGoods)}
-                  </div>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-                  <span className="text-[10px] font-bold uppercase text-emerald-900 block">
-                    Punjab PST (16%)
-                  </span>
-                  <div className="text-base sm:text-lg font-black font-mono text-emerald-800 mt-0.5">
-                    Rs. {formatCurrency(reportTotals.totalPst)}
-                  </div>
-                  <div className="text-[11px] text-emerald-700/80 mt-0.5">
-                    Services: Rs. {formatCurrency(reportTotals.totalServices)}
-                  </div>
-                </div>
+                ))}
               </div>
 
-              {/* Report Data Table */}
               {filteredClientReport.length === 0 ? (
-                <div className="p-12 text-center text-slate-500">
-                  <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="font-bold text-slate-700">No active billed clients</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {searchQuery ? `No client matches "${searchQuery}". Clear search to view all.` : 'Clients with active bills will appear in this audited report.'}
-                  </p>
+                <div className="p-14 text-center">
+                  <span className="w-14 h-14 rounded-2xl bg-navy-50 text-navy-300 flex items-center justify-center mx-auto mb-4">
+                    <BarChart3 className="w-7 h-7" />
+                  </span>
+                  <p className="font-bold text-ink-900">No billed clients</p>
+                  <p className="text-xs text-ink-400 mt-1">{searchQuery ? `No client matches "${searchQuery}".` : 'Clients with active bills will appear here.'}</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
+                  <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-[#0F2544] text-white uppercase text-[10px] font-bold tracking-wider">
-                        <th className="py-2.5 px-3 w-10 text-center">Sr</th>
-                        <th className="py-2.5 px-3">Client Particulars</th>
-                        <th className="py-2.5 px-2.5 text-center">Bills</th>
-                        <th className="py-2.5 px-2.5 text-center">Quotes</th>
-                        <th className="py-2.5 px-3 text-right">Goods Value</th>
-                        <th className="py-2.5 px-3 text-right">GST (18%)</th>
-                        <th className="py-2.5 px-3 text-right">Services</th>
-                        <th className="py-2.5 px-3 text-right">PST (16%)</th>
-                        <th className="py-2.5 px-3 text-right font-black">Grand Total</th>
-                        <th className="py-2.5 px-3 text-center">Last Bill</th>
-                        <th className="py-2.5 px-3 text-center">Action</th>
+                      <tr className="bg-navy-900 text-white uppercase text-[10px] font-bold tracking-wider">
+                        <th className="py-3 px-3 w-10 text-center">Sr</th>
+                        <th className="py-3 px-3">Client</th>
+                        <th className="py-3 px-2.5 text-center">Bills</th>
+                        <th className="py-3 px-2.5 text-center">Quotes</th>
+                        <th className="py-3 px-3 text-right">Goods</th>
+                        <th className="py-3 px-3 text-right">GST 18%</th>
+                        <th className="py-3 px-3 text-right">Services</th>
+                        <th className="py-3 px-3 text-right">PST 16%</th>
+                        <th className="py-3 px-3 text-right">Grand Total</th>
+                        <th className="py-3 px-3 text-center">Last Bill</th>
+                        <th className="py-3 px-3 text-center">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {filteredClientReport.map((c, i) => {
-                        const isEven = i % 2 === 0;
-                        return (
-                          <tr
-                            key={c.clientName + i}
-                            onClick={() => setDrillDownClient(c.clientName)}
-                            className={`hover:bg-blue-50/70 transition cursor-pointer ${isEven ? 'bg-white' : 'bg-slate-50/60'}`}
-                            title="Click to view all bills and detailed ledger for this client"
-                          >
-                            <td className="py-3 px-3 text-center font-bold text-slate-500">
-                              {i + 1}
-                            </td>
-                            <td className="py-3 px-3">
-                              <div className="font-bold text-slate-900 text-sm hover:text-blue-900">
-                                {c.clientName}
+                    <tbody className="divide-y divide-line">
+                      {filteredClientReport.map((c, i) => (
+                        <tr
+                          key={c.clientName + i}
+                          onClick={() => setDrillDownClient(c.clientName)}
+                          className={`hover:bg-navy-50/50 transition cursor-pointer ${i % 2 ? 'bg-paper/60' : 'bg-white'}`}
+                          title="Click for client ledger"
+                        >
+                          <td className="py-3 px-3 text-center font-bold text-ink-400">{i + 1}</td>
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-ink-900 text-[13px]">{c.clientName}</div>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              {c.clientNTN && <span className="corp-chip bg-navy-50 text-navy-800 border border-navy-100 font-mono">NTN {c.clientNTN}</span>}
+                              {c.clientAddress && <span className="text-[11px] text-ink-400 truncate max-w-[220px]">{c.clientAddress}</span>}
+                            </div>
+                          </td>
+                          <td className="py-3 px-2.5 text-center"><span className={`corp-chip ${c.billCount ? 'bg-navy-900 text-white' : 'bg-paper text-ink-400'}`}>{c.billCount}</span></td>
+                          <td className="py-3 px-2.5 text-center"><span className={`corp-chip ${c.quoteCount ? 'bg-gold-100 text-gold-700 border border-gold-200' : 'bg-paper text-ink-400'}`}>{c.quoteCount}</span></td>
+                          <td className="py-3 px-3 text-right font-mono text-ink-700">{c.goodsTotal > 0 ? `Rs. ${formatCurrency(c.goodsTotal)}` : <span className="text-line">—</span>}</td>
+                          <td className="py-3 px-3 text-right font-mono font-semibold text-navy-700">{c.gstTotal > 0 ? `Rs. ${formatCurrency(c.gstTotal)}` : <span className="text-line">—</span>}</td>
+                          <td className="py-3 px-3 text-right font-mono text-ink-700">{c.serviceTotal > 0 ? `Rs. ${formatCurrency(c.serviceTotal)}` : <span className="text-line">—</span>}</td>
+                          <td className="py-3 px-3 text-right font-mono font-semibold text-emerald-700">{c.pstTotal > 0 ? `Rs. ${formatCurrency(c.pstTotal)}` : <span className="text-line">—</span>}</td>
+                          <td className="py-3 px-3 text-right font-mono font-extrabold text-ink-900">Rs. {formatCurrency(c.grandTotal)}</td>
+                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                            {c.lastBillNo ? (
+                              <div>
+                                <span className="corp-chip bg-navy-50 text-navy-800 border border-navy-100 font-mono">#{c.lastBillNo}</span>
+                                <div className="text-[10px] text-ink-400 mt-1">{formatDateDisplay(c.lastBillDate)} · Rs. {formatCurrency(c.lastBillAmount)}</div>
                               </div>
-                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                {c.clientNTN && (
-                                  <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
-                                    NTN: {c.clientNTN}
-                                  </span>
-                                )}
-                                {c.clientAddress && (
-                                  <span className="text-[11px] text-slate-500 truncate max-w-xs">
-                                    {c.clientAddress}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3 px-2.5 text-center">
-                              <span className={`inline-block px-2 py-0.5 rounded-full font-bold text-xs ${
-                                c.billCount > 0 ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-400'
-                              }`}>
-                                {c.billCount}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2.5 text-center">
-                              <span className={`inline-block px-2 py-0.5 rounded-full font-semibold text-xs ${
-                                c.quoteCount > 0 ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'
-                              }`}>
-                                {c.quoteCount}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-slate-700">
-                              {c.goodsTotal > 0 ? `Rs. ${formatCurrency(c.goodsTotal)}` : <span className="text-slate-300 font-sans">—</span>}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-blue-700 font-semibold">
-                              {c.gstTotal > 0 ? `Rs. ${formatCurrency(c.gstTotal)}` : <span className="text-slate-300 font-sans">—</span>}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-slate-700">
-                              {c.serviceTotal > 0 ? `Rs. ${formatCurrency(c.serviceTotal)}` : <span className="text-slate-300 font-sans">—</span>}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-emerald-700 font-semibold">
-                              {c.pstTotal > 0 ? `Rs. ${formatCurrency(c.pstTotal)}` : <span className="text-slate-300 font-sans">—</span>}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono font-black text-slate-900 text-sm">
-                              Rs. {formatCurrency(c.grandTotal)}
-                            </td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              {c.lastBillNo ? (
-                                <div>
-                                  <span className="font-mono font-bold text-slate-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-[11px]">
-                                    BILL #{c.lastBillNo}
-                                  </span>
-                                  <div className="text-[10px] text-slate-500 mt-0.5 font-medium">
-                                    {formatDateDisplay(c.lastBillDate)} · Rs. {formatCurrency(c.lastBillAmount)}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-slate-300">—</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDrillDownClient(c.clientName);
-                                }}
-                                className="px-3 py-1.5 rounded-xl bg-[#0F2544] hover:bg-[#163866] text-white font-bold text-[11px] inline-flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-                                title={`View all bills and detailed breakdown for ${c.clientName}`}
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>All Bills ({c.billCount})</span>
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                            ) : <span className="text-line">—</span>}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDrillDownClient(c.clientName); }}
+                              className="corp-btn-primary !py-1.5 !px-3 text-[11px]"
+                            >
+                              <Eye className="w-3.5 h-3.5" /><span>Ledger</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                     <tfoot>
-                      <tr className="bg-slate-900 text-white font-bold text-xs border-t-2 border-slate-950">
-                        <td colSpan={2} className="py-3 px-3 font-extrabold uppercase tracking-wide">
-                          TOTAL ({filteredClientReport.length} Clients)
-                        </td>
-                        <td className="py-3 px-2.5 text-center font-bold">
-                          {reportTotals.totalBills}
-                        </td>
-                        <td className="py-3 px-2.5 text-center font-bold">
-                          {reportTotals.totalQuotes}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono">
-                          Rs. {formatCurrency(reportTotals.totalGoods)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono text-blue-200">
-                          Rs. {formatCurrency(reportTotals.totalGst)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono">
-                          Rs. {formatCurrency(reportTotals.totalServices)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono text-emerald-200">
-                          Rs. {formatCurrency(reportTotals.totalPst)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-black text-amber-300 text-sm">
-                          Rs. {formatCurrency(reportTotals.totalGrand)}
-                        </td>
-                        <td colSpan={2} className="py-3 px-3 text-center text-xs text-slate-300 font-normal">
-                          Consolidated Total
-                        </td>
+                      <tr className="bg-navy-950 text-white font-bold text-xs">
+                        <td colSpan={2} className="py-3 px-3 uppercase tracking-wide">Total · {filteredClientReport.length} clients</td>
+                        <td className="py-3 px-2.5 text-center">{reportTotals.totalBills}</td>
+                        <td className="py-3 px-2.5 text-center">{reportTotals.totalQuotes}</td>
+                        <td className="py-3 px-3 text-right font-mono">Rs. {formatCurrency(reportTotals.totalGoods)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-navy-200">Rs. {formatCurrency(reportTotals.totalGst)}</td>
+                        <td className="py-3 px-3 text-right font-mono">Rs. {formatCurrency(reportTotals.totalServices)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-emerald-300">Rs. {formatCurrency(reportTotals.totalPst)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-extrabold text-gold-400">Rs. {formatCurrency(reportTotals.totalGrand)}</td>
+                        <td colSpan={2} className="py-3 px-3 text-center text-xs text-navy-200 font-medium">Consolidated</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1303,212 +1007,136 @@ export const HomeScreen: React.FC<Props> = ({
         </div>
       </main>
 
-      {/* Mobile Sticky Action Dock (Screen width < 640px) */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex items-center justify-between gap-2 shadow-2xl">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setActiveTab('DOCUMENTS')}
-            className={`p-1.5 rounded-xl text-xs font-bold flex flex-col items-center ${
-              activeTab === 'DOCUMENTS' ? 'text-[#0F2544] font-black' : 'text-slate-500'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span className="text-[10px]">Docs</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('CLIENTS')}
-            className={`p-1.5 rounded-xl text-xs font-bold flex flex-col items-center ${
-              activeTab === 'CLIENTS' ? 'text-[#0F2544] font-black' : 'text-slate-500'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span className="text-[10px]">Clients</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('REPORTS')}
-            className={`p-1.5 rounded-xl text-xs font-bold flex flex-col items-center ${
-              activeTab === 'REPORTS' ? 'text-[#0F2544] font-black' : 'text-slate-500'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span className="text-[10px]">Reports</span>
-          </button>
+      {/* Mobile action dock */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-line px-3 py-2 flex items-center justify-between gap-2 no-print">
+        <div className="flex items-center gap-0.5">
+          {([
+            ['DOCUMENTS', FileText, 'Docs'],
+            ['CLIENTS', Users, 'Clients'],
+            ['REPORTS', BarChart3, 'Reports'],
+          ] as const).map(([tab, Icon, label]) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab as typeof activeTab)}
+              className={`px-2.5 py-1.5 rounded-xl flex flex-col items-center gap-0.5 ${activeTab === tab ? 'text-navy-800 bg-navy-50' : 'text-ink-400'}`}
+            >
+              <Icon className="w-4.5 h-4.5" />
+              <span className="text-[10px] font-bold">{label}</span>
+            </button>
+          ))}
         </div>
-
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={onNewQuotation}
-            className="px-2.5 py-2 rounded-xl bg-slate-800 text-white font-bold text-xs flex items-center gap-1 shadow-xs"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>+ Quote</span>
-          </button>
-          <button
-            onClick={onNewBill}
-            className="px-3.5 py-2 rounded-xl bg-[#0F2544] text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
-          >
-            <FilePlus className="w-4 h-4" />
-            <span>+ New Bill</span>
-          </button>
+          <button onClick={onNewQuotation} className="corp-btn-ghost !py-2 !px-3 text-xs">+ Quote</button>
+          <button onClick={onNewBill} className="corp-btn-primary !py-2 !px-3.5 text-xs">+ New Bill</button>
         </div>
       </div>
 
-      {/* Footer Credit Line */}
-      <footer className="py-4 pb-20 sm:pb-4 text-center text-xs text-slate-400 font-medium">
-        Developed by MKZ · {settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Systems
+      <footer className="py-4 pb-24 sm:pb-5 text-center text-[11px] text-ink-400 font-medium">
+        {settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Systems
       </footer>
 
-      {/* Client-Wise Detailed Ledger & Bills Drill-Down Modal */}
+      {/* Client ledger drill-down */}
       {drillDownClient && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-xs animate-in fade-in"
-          onClick={() => setDrillDownClient(null)}
-        >
-          <div
-            className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col my-auto max-h-[92vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-amber-300 font-black">
-                  <Briefcase className="w-5 h-5 text-amber-300" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base sm:text-lg font-black text-white">
-                      {drillDownClient}
-                    </h2>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 uppercase">
-                      Client Ledger
-                    </span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-navy-950/70 backdrop-blur-[2px]" onClick={() => setDrillDownClient(null)}>
+          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-line overflow-hidden flex flex-col my-auto max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 sm:px-5 py-4 bg-navy-950 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="w-10 h-10 rounded-xl bg-white/5 border border-gold-500/40 flex items-center justify-center shrink-0">
+                  <Briefcase className="w-5 h-5 text-gold-400" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-[16px] font-extrabold truncate">{drillDownClient}</h2>
+                    <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">Client Ledger</span>
                   </div>
-                  <p className="text-xs text-blue-200 font-medium">
+                  <p className="text-xs text-navy-200 truncate">
                     {drillDownSummary?.clientAddress ? drillDownSummary.clientAddress + ' · ' : ''}
-                    {drillDownSummary?.clientNTN ? 'NTN: ' + drillDownSummary.clientNTN : 'No NTN recorded'}
+                    {drillDownSummary?.clientNTN ? 'NTN ' + drillDownSummary.clientNTN : 'No NTN recorded'}
                   </p>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => exportDocumentsToExcel(drillDownDocs, `${drillDownClient}_Bills`)}
-                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Export Client Ledger</span>
+                  <Download className="w-3.5 h-3.5" /><span>Export</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setDrillDownClient(null)}
-                  className="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
-                >
+                <button type="button" onClick={() => setDrillDownClient(null)} className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition">
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            {/* Client Summary Mini-Cards */}
             {drillDownSummary && (
-              <div className="p-3 sm:p-4 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0 text-xs">
-                <div className="p-2.5 rounded-xl bg-white border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase text-slate-500 block">Total Invoiced</span>
-                  <span className="font-mono font-black text-slate-900 text-base">
-                    Rs. {formatCurrency(drillDownSummary.grandTotal)}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">{drillDownDocs.length} Total Docs</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase text-blue-800 block">Federal GST</span>
-                  <span className="font-mono font-bold text-blue-800 text-sm">
-                    Rs. {formatCurrency(drillDownSummary.gstTotal)}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">Goods: Rs. {formatCurrency(drillDownSummary.goodsTotal)}</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase text-emerald-800 block">Punjab PST</span>
-                  <span className="font-mono font-bold text-emerald-800 text-sm">
-                    Rs. {formatCurrency(drillDownSummary.pstTotal)}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">Services: Rs. {formatCurrency(drillDownSummary.serviceTotal)}</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase text-slate-500 block">Latest Bill</span>
-                  <span className="font-mono font-bold text-slate-900 text-sm">
-                    {drillDownSummary.lastBillNo ? `BILL #${drillDownSummary.lastBillNo}` : '—'}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {drillDownSummary.lastBillDate ? formatDateDisplay(drillDownSummary.lastBillDate) : 'No bill'}
-                  </span>
-                </div>
+              <div className="p-3 sm:p-4 bg-paper border-b border-line grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                {[
+                  ['Total invoiced', `Rs. ${formatCurrency(drillDownSummary.grandTotal)}`, `${drillDownDocs.length} documents`],
+                  ['Federal GST', `Rs. ${formatCurrency(drillDownSummary.gstTotal)}`, `Goods Rs. ${formatCurrency(drillDownSummary.goodsTotal)}`],
+                  ['Punjab PST', `Rs. ${formatCurrency(drillDownSummary.pstTotal)}`, `Services Rs. ${formatCurrency(drillDownSummary.serviceTotal)}`],
+                  ['Latest bill', drillDownSummary.lastBillNo ? `#${drillDownSummary.lastBillNo}` : '—', drillDownSummary.lastBillDate ? formatDateDisplay(drillDownSummary.lastBillDate) : 'No bill yet'],
+                ].map(([label, value, sub]) => (
+                  <div key={label as string} className="corp-card p-3">
+                    <span className="corp-label !mb-1">{label}</span>
+                    <div className="font-mono font-extrabold text-ink-900 text-[15px]">{value}</div>
+                    <div className="text-[10px] text-ink-400 mt-0.5">{sub}</div>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Document Records Drill-Down Table */}
             <div className="p-3 sm:p-4 overflow-y-auto flex-1">
               {drillDownDocs.length === 0 ? (
-                <div className="p-8 text-center text-slate-400">
-                  <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                  <p className="font-bold text-slate-600">No documents found for this client</p>
+                <div className="p-10 text-center text-ink-400">
+                  <FileText className="w-10 h-10 mx-auto mb-2 text-line" />
+                  <p className="font-bold text-ink-700">No documents for this client</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
+                <div className="overflow-x-auto rounded-xl border border-line">
+                  <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold tracking-wider border-b border-slate-300">
-                        <th className="py-2 px-2.5 text-center">Sr</th>
-                        <th className="py-2 px-2.5">Date</th>
-                        <th className="py-2 px-2.5">Type &amp; #</th>
-                        <th className="py-2 px-3">Subject / PO Reference</th>
-                        <th className="py-2 px-2.5 text-right">Goods</th>
-                        <th className="py-2 px-2.5 text-right">GST</th>
-                        <th className="py-2 px-2.5 text-right">Services</th>
-                        <th className="py-2 px-2.5 text-right">PST</th>
-                        <th className="py-2 px-2.5 text-right font-black">Grand Total</th>
-                        <th className="py-2 px-2.5 text-center">Action</th>
+                      <tr className="bg-navy-900 text-white uppercase text-[10px] font-bold tracking-wider">
+                        <th className="py-2.5 px-2.5 text-center">Sr</th>
+                        <th className="py-2.5 px-2.5">Date</th>
+                        <th className="py-2.5 px-2.5">Doc</th>
+                        <th className="py-2.5 px-3">Reference</th>
+                        <th className="py-2.5 px-2.5 text-right">Goods</th>
+                        <th className="py-2.5 px-2.5 text-right">GST</th>
+                        <th className="py-2.5 px-2.5 text-right">Services</th>
+                        <th className="py-2.5 px-2.5 text-right">PST</th>
+                        <th className="py-2.5 px-2.5 text-right">Total</th>
+                        <th className="py-2.5 px-2.5 text-center">Open</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-line">
                       {drillDownDocs.map((d, idx) => {
                         const dType = String(d.type || d.Type || 'BILL');
                         const dNo = String(d.docNo || d.DocNo || '—');
                         const isCancelled = String(d.status || d.Status || '').toLowerCase() === 'cancelled';
                         const total = Number(d.grandTotal ?? d.GrandTotal ?? 0);
-                        const goods = Number(d.goodsSub ?? d.GoodsSub ?? 0);
-                        const gst = Number(d.gst ?? d.GST ?? 0);
-                        const services = Number(d.serviceSub ?? d.ServiceSub ?? 0);
-                        const pst = Number(d.pst ?? d.PST ?? 0);
-
                         return (
-                          <tr key={d.docId || idx} className={`hover:bg-slate-50 transition ${isCancelled ? 'opacity-60 bg-slate-50' : ''}`}>
-                            <td className="py-2.5 px-2.5 text-center font-bold text-slate-400">{idx + 1}</td>
-                            <td className="py-2.5 px-2.5 font-medium whitespace-nowrap text-slate-600">{formatDateDisplay(d.date || d.Date)}</td>
+                          <tr key={String(d.docId || d.DocID || idx)} className={`hover:bg-navy-50/50 transition ${isCancelled ? 'opacity-55' : ''}`}>
+                            <td className="py-2.5 px-2.5 text-center font-bold text-ink-400">{idx + 1}</td>
+                            <td className="py-2.5 px-2.5 whitespace-nowrap text-ink-500 font-medium">{formatDateDisplay(d.date || d.Date)}</td>
                             <td className="py-2.5 px-2.5 whitespace-nowrap">
-                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
-                                dType === 'BILL' ? 'bg-blue-100 text-blue-900 border border-blue-200' : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                              }`}>
-                                {dType} #{dNo}
-                              </span>
+                              <span className={`corp-chip ${dType === 'BILL' ? 'bg-navy-900 text-white' : 'bg-gold-100 text-gold-700 border border-gold-200'}`}>{dType} #{dNo}</span>
                             </td>
-                            <td className="py-2.5 px-3 text-slate-700 max-w-xs truncate" title={d.refText || d.RefText || ''}>
-                              {d.refText || d.RefText || <span className="text-slate-300 italic">No reference</span>}
+                            <td className="py-2.5 px-3 text-ink-700 max-w-[220px] truncate" title={String(d.refText || d.RefText || '')}>
+                              {String(d.refText || d.RefText || '') || <span className="text-line italic">No reference</span>}
                             </td>
-                            <td className="py-2.5 px-2.5 text-right font-mono text-slate-600">{goods > 0 ? formatCurrency(goods) : '—'}</td>
-                            <td className="py-2.5 px-2.5 text-right font-mono text-blue-700">{gst > 0 ? formatCurrency(gst) : '—'}</td>
-                            <td className="py-2.5 px-2.5 text-right font-mono text-slate-600">{services > 0 ? formatCurrency(services) : '—'}</td>
-                            <td className="py-2.5 px-2.5 text-right font-mono text-emerald-700">{pst > 0 ? formatCurrency(pst) : '—'}</td>
-                            <td className="py-2.5 px-2.5 text-right font-mono font-black text-slate-950">Rs. {formatCurrency(total)}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-ink-500">{formatCurrency(Number(d.goodsSub ?? d.GoodsSub ?? 0))}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-navy-700">{formatCurrency(Number(d.gst ?? d.GST ?? 0))}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-ink-500">{formatCurrency(Number(d.serviceSub ?? d.ServiceSub ?? 0))}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-emerald-700">{formatCurrency(Number(d.pst ?? d.PST ?? 0))}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono font-extrabold text-ink-900">Rs. {formatCurrency(total)}</td>
                             <td className="py-2.5 px-2.5 text-center">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setDrillDownClient(null);
-                                  onSelectDoc(d);
-                                }}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-[#0F2544] hover:text-white text-slate-800 rounded-lg text-xs font-bold transition cursor-pointer"
+                                onClick={() => { setDrillDownClient(null); onSelectDoc(d); }}
+                                className="corp-btn-ghost !py-1.5 !px-3 text-[11px]"
                               >
-                                View / Print
+                                View
                               </button>
                             </td>
                           </tr>
@@ -1520,31 +1148,19 @@ export const HomeScreen: React.FC<Props> = ({
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
-              <span className="font-medium">
-                Viewing all active bills and quotations under {settings.ownerName || 'MIAN FARHAN ANWAR'}
-              </span>
-              <button
-                type="button"
-                onClick={() => setDrillDownClient(null)}
-                className="px-4 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold transition cursor-pointer"
-              >
-                Close
-              </button>
+            <div className="px-4 py-3 bg-paper border-t border-line flex items-center justify-between text-xs text-ink-400 shrink-0">
+              <span className="font-medium hidden sm:inline">Complete billing history for this client</span>
+              <button type="button" onClick={() => setDrillDownClient(null)} className="corp-btn-ghost !py-2 text-xs ml-auto">Close</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* LIFO PIN Protected Delete Modal */}
+      {/* LIFO delete modal */}
       <LifoDeleteModal
         isOpen={isLifoModalOpen}
         doc={docToDeleteLifo}
-        onClose={() => {
-          setIsLifoModalOpen(false);
-          setDocToDeleteLifo(null);
-        }}
+        onClose={() => { setIsLifoModalOpen(false); setDocToDeleteLifo(null); }}
         onConfirmDelete={handleConfirmLifoDelete}
         isDeleting={isDeletingLifo}
       />

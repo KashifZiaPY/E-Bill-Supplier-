@@ -492,12 +492,12 @@ export default function App() {
             onEdit={() => handleEditDoc(activeDoc)}
           />
         ) : (
-          <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center max-w-sm shadow-sm">
-              <p className="text-slate-800 font-bold mb-4">No document selected</p>
+          <div className="min-h-screen bg-paper flex items-center justify-center p-6">
+            <div className="corp-card p-8 text-center max-w-sm">
+              <p className="text-ink-900 font-bold mb-4">No document selected</p>
               <button
                 onClick={() => setCurrentScreen('HOME')}
-                className="px-5 py-2.5 rounded-xl bg-[#0F2544] hover:bg-[#1E3A8A] text-white font-bold text-xs transition cursor-pointer"
+                className="corp-btn-primary text-xs"
               >
                 Back to Dashboard
               </button>

@@ -18,34 +18,36 @@ export const ToastContainer: React.FC<Props> = ({ toasts, onDismiss }) => {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none no-print">
+    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm w-[calc(100%-2rem)] pointer-events-none no-print">
       {toasts.map((toast) => {
-        let bg = 'bg-slate-900 text-white';
+        let accent = 'border-navy-600';
         let Icon = Info;
+        let iconWrap = 'bg-navy-50 text-navy-700';
         if (toast.type === 'success') {
-          bg = 'bg-emerald-800 text-white border-l-4 border-emerald-400';
+          accent = 'border-emerald-600';
           Icon = CheckCircle2;
+          iconWrap = 'bg-emerald-50 text-emerald-700';
         } else if (toast.type === 'error') {
-          bg = 'bg-red-800 text-white border-l-4 border-red-400';
+          accent = 'border-[#b3372f]';
           Icon = AlertCircle;
-        } else {
-          bg = 'bg-[#1F3A5F] text-white border-l-4 border-sky-400';
-          Icon = Info;
+          iconWrap = 'bg-red-50 text-[#b3372f]';
         }
 
         return (
           <div
             key={toast.id}
-            className={`pointer-events-auto p-4 rounded-xl shadow-xl flex items-start gap-3 transition-all transform animate-in fade-in slide-in-from-top-4 ${bg}`}
+            className={`pointer-events-auto bg-white border border-line border-l-4 ${accent} rounded-xl shadow-[0_8px_30px_-6px_rgba(12,28,51,0.25)] px-4 py-3 flex items-start gap-3 animate-in fade-in slide-in-from-top-3 duration-200`}
           >
-            <Icon className="w-5 h-5 shrink-0 mt-0.5" />
-            <div className="flex-1 text-sm font-medium leading-snug">
+            <span className={`w-8 h-8 rounded-lg ${iconWrap} flex items-center justify-center shrink-0`}>
+              <Icon className="w-4.5 h-4.5" />
+            </span>
+            <div className="flex-1 text-[13px] font-medium leading-snug text-ink-900 pt-1">
               {toast.message}
             </div>
             <button
               onClick={() => onDismiss(toast.id)}
-              className="text-white/70 hover:text-white p-0.5 rounded transition"
-              aria-label="Close"
+              className="text-ink-400 hover:text-ink-900 p-1 rounded-lg hover:bg-slate-100 transition"
+              aria-label="Dismiss"
             >
               <X className="w-4 h-4" />
             </button>

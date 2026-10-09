@@ -76,121 +76,91 @@ export const ClientModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-        {/* Header */}
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0F2544] to-[#1E3A8A] text-white flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-white/10 rounded-xl">
-              <UserPlus className="w-5 h-5 text-white" />
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/70 backdrop-blur-[2px]">
+      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-line overflow-hidden">
+        <div className="px-5 py-4 bg-navy-950 text-white flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-white/5 border border-gold-500/40 flex items-center justify-center">
+              <UserPlus className="w-5 h-5 text-gold-400" />
+            </span>
             <div>
-              <h3 className="font-bold text-base">
-                {clientToEdit ? 'Edit Client Record' : 'Register New Client'}
-              </h3>
-              <p className="text-xs text-blue-200">
-                Matches Google Sheet Clients registry (Name, Address, NTN, STRN)
-              </p>
+              <h3 className="font-extrabold text-[15px] tracking-tight">{clientToEdit ? 'Edit Client' : 'Register New Client'}</h3>
+              <p className="text-xs text-navy-200">Synced with the Google Sheet client registry</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-white/70 hover:text-white p-1 rounded-lg transition cursor-pointer"
-          >
+          <button onClick={onClose} className="p-1.5 text-white/60 hover:text-white hover:bg-white/10 rounded-xl transition">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {error && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
-              {error}
-            </div>
+            <div className="px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-[#96291f] text-xs font-semibold">{error}</div>
           )}
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-              Client / Department Name <span className="text-rose-500">*</span>
-            </label>
+            <label className="corp-label">Client / department name <span className="text-[#b3372f]">*</span></label>
             <div className="relative">
-              <Building className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Building className="w-4 h-4 text-ink-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Director General Health Services Punjab"
                 required
-                className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none font-semibold text-slate-900"
+                className="corp-input !pl-10 font-semibold"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                National Tax Number (NTN)
-              </label>
+              <label className="corp-label">NTN</label>
               <div className="relative">
-                <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Hash className="w-4 h-4 text-ink-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={ntn}
                   onChange={(e) => setNtn(e.target.value)}
                   placeholder="e.g. 9010203-4"
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none font-mono text-slate-900"
+                  className="corp-input !pl-10 font-mono"
                 />
               </div>
             </div>
-
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                Sales Tax Reg # (STRN)
-              </label>
+              <label className="corp-label">STRN</label>
               <div className="relative">
-                <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Hash className="w-4 h-4 text-ink-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={strn}
                   onChange={(e) => setStrn(e.target.value)}
                   placeholder="e.g. 07-01-9876-543-21"
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none font-mono text-slate-900"
+                  className="corp-input !pl-10 font-mono"
                 />
               </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-              Office / Department Address
-            </label>
+            <label className="corp-label">Office address</label>
             <div className="relative">
-              <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <MapPin className="w-4 h-4 text-ink-400 absolute left-3.5 top-3.5 pointer-events-none" />
               <textarea
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                rows={2.5}
+                rows={2}
                 placeholder="e.g. 24-Cooper Road, Lahore"
-                className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none text-slate-900"
+                className="corp-input !pl-10 resize-none"
               />
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 text-xs font-bold text-white bg-[#0F2544] hover:bg-[#1E3A8A] rounded-xl shadow-md transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-            >
-              {isSubmitting && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-line">
+            <button type="button" onClick={onClose} className="corp-btn-ghost !py-2 text-xs">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="corp-btn-primary !py-2 text-xs">
+              {isSubmitting && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              <Check className="w-3.5 h-3.5" />
               <span>{clientToEdit ? 'Save Changes' : 'Save Client'}</span>
             </button>
           </div>

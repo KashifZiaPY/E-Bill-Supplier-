@@ -81,8 +81,7 @@ export const PreviewScreen: React.FC<Props> = ({
   const currentFirmName = doc.firmName || settings.supplierName || 'Anwar Traders';
 
   return (
-    <div className="min-h-screen bg-[#EAEFF6]">
-      {/* Strict Print CSS: Ensures ZERO double padding and ZERO 2-page spill */}
+    <div className="min-h-screen bg-paper">
       <style>{`
         @page {
           size: A4 portrait;
@@ -98,9 +97,7 @@ export const PreviewScreen: React.FC<Props> = ({
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .no-print {
-            display: none !important;
-          }
+          .no-print { display: none !important; }
           .preview-outer-wrap {
             padding: 0 !important;
             margin: 0 !important;
@@ -119,158 +116,112 @@ export const PreviewScreen: React.FC<Props> = ({
             max-width: 100% !important;
             background: #ffffff !important;
           }
-          table {
-            border-collapse: collapse !important;
-            width: 100% !important;
-          }
-          tr {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+          table { border-collapse: collapse !important; width: 100% !important; }
+          tr { break-inside: avoid !important; page-break-inside: avoid !important; }
         }
       `}</style>
 
-      {/* Top Action & Navigation Bar: Executive Navy & Sapphire Header */}
-      <div className="no-print bg-gradient-to-r from-[#0B1E36] via-[#103158] to-[#0B1E36] text-white border-b border-blue-900/80 sticky top-0 z-40 shadow-lg">
+      {/* Corporate action bar */}
+      <div className="no-print bg-navy-950 text-white sticky top-0 z-40 shadow-[0_2px_12px_rgba(12,28,51,0.35)]">
+        <div className="h-0.5 bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />
         <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          {/* Back & Doc Title */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <button
               onClick={onBack}
-              className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer flex items-center gap-1.5"
-              title="Return to Dashboard (or press Escape)"
+              className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition flex items-center gap-1.5"
+              title="Back (Esc)"
               aria-label="Back"
             >
-              <ArrowLeft className="w-5 h-5 text-white" />
-              <span className="hidden sm:inline-block text-[10px] font-mono font-bold text-blue-200 bg-white/10 border border-white/20 px-1.5 py-0.5 rounded shadow-2xs">
-                ESC
-              </span>
+              <ArrowLeft className="w-5 h-5" />
+              <kbd className="hidden sm:inline-block text-[10px] font-mono font-bold text-navy-200 bg-white/10 border border-white/20 px-1.5 py-0.5 rounded">ESC</kbd>
             </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-black text-white text-base tracking-wide">
-                  {docType} #{doc.docNo || doc.DocNo}
-                </span>
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/40 uppercase tracking-wider">
-                  {currentFirmName}
-                </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-white text-[16px] tracking-tight">{docType} #{doc.docNo || doc.DocNo}</span>
+                <span className="corp-chip bg-gold-500/15 text-gold-400 border border-gold-500/40">{currentFirmName}</span>
               </div>
-              <p className="text-xs text-blue-200/90 font-medium truncate max-w-sm">
-                {doc.clientName || doc.ClientName}
-              </p>
+              <p className="text-xs text-navy-200 font-medium truncate max-w-[280px]">{doc.clientName || doc.ClientName}</p>
             </div>
           </div>
 
-          {/* Right action controls */}
-          <div className="flex items-center gap-2.5">
-            {/* Letterhead toggle switch */}
-            <label className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/15 border border-white/20 px-3 py-1.5 rounded-xl transition select-none">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/15 border border-white/20 px-3 py-2 rounded-xl transition select-none">
               <input
                 type="checkbox"
                 checked={printOnLetterhead}
                 onChange={(e) => handleToggleLetterhead(e.target.checked)}
-                className="w-4 h-4 text-amber-400 rounded focus:ring-0 cursor-pointer accent-amber-400"
+                className="w-4 h-4 rounded accent-gold-500 cursor-pointer"
               />
-              <span className="text-xs font-bold text-white">
-                Pre-printed letterhead
-              </span>
+              <span className="text-xs font-bold text-white">Pre-printed letterhead</span>
             </label>
-
             <button
               onClick={() => exportDocLineItemsToExcel(doc)}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm hover:shadow transition cursor-pointer border border-emerald-400/30"
-              title="Export Line Items to Excel (.xlsx)"
+              className="corp-btn-ghost !py-2 !border-white/20 !bg-white/10 !text-white hover:!bg-white/15 text-xs"
+              title="Export line items to Excel (.xlsx)"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
-              <span className="hidden sm:inline">Export Excel</span>
+              <FileSpreadsheet className="w-4 h-4" />
+              <span className="hidden sm:inline">Excel</span>
             </button>
-
             <button
               onClick={onEdit}
-              className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer border border-white/20"
+              className="corp-btn-ghost !py-2 !border-white/20 !bg-white/10 !text-white hover:!bg-white/15 text-xs"
             >
-              <Edit className="w-4 h-4 text-blue-200" />
-              <span>Edit</span>
+              <Edit className="w-4 h-4" /><span>Edit</span>
             </button>
-
-            <button
-              onClick={handlePrint}
-              className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-sm flex items-center gap-2 shadow-lg hover:shadow-xl transition cursor-pointer active:scale-95"
-            >
-              <Printer className="w-4 h-4 text-slate-950" />
-              <span>Print Document</span>
+            <button onClick={handlePrint} className="corp-btn-gold !py-2 text-sm">
+              <Printer className="w-4 h-4" /><span>Print</span>
             </button>
           </div>
         </div>
 
-        {/* Layout Switch Tabs (Screen Only) */}
-        <div className="bg-[#0B1E36] border-t border-blue-900/60">
-          <div className="max-w-5xl mx-auto px-4 flex gap-2 pt-2.5 pb-2.5">
+        <div className="border-t border-white/10">
+          <div className="max-w-5xl mx-auto px-4 flex gap-1.5 py-2">
             {docType === 'BILL' ? (
               <>
                 <button
                   onClick={() => setActiveTab('BILL')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                    activeTab === 'BILL'
-                      ? 'bg-blue-600 text-white shadow-md ring-1 ring-blue-400/60'
-                      : 'text-blue-200/80 hover:text-white hover:bg-white/10'
+                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+                    activeTab === 'BILL' ? 'bg-gold-500 text-navy-950 shadow-sm' : 'text-navy-200 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>Bill Layout</span>
+                  <FileText className="w-4 h-4" /><span>Bill Layout</span>
                 </button>
-
                 {hasGstItems && (
                   <button
                     onClick={() => setActiveTab('GST')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                      activeTab === 'GST'
-                        ? 'bg-blue-600 text-white shadow-md ring-1 ring-blue-400/60'
-                        : 'text-blue-200/80 hover:text-white hover:bg-white/10'
+                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+                      activeTab === 'GST' ? 'bg-gold-500 text-navy-950 shadow-sm' : 'text-navy-200 hover:text-white hover:bg-white/10'
                     }`}
                   >
-                    <FileCheck2 className="w-4 h-4" />
-                    <span>GST Sales Tax Invoice</span>
+                    <FileCheck2 className="w-4 h-4" /><span>GST Sales Tax Invoice</span>
                   </button>
                 )}
               </>
             ) : (
-              <button
-                onClick={() => setActiveTab('QUOTATION')}
-                className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-blue-600 text-white shadow-md ring-1 ring-blue-400/60"
-              >
-                <FileText className="w-4 h-4" />
-                <span>Quotation Layout</span>
+              <button className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gold-500 text-navy-950 shadow-sm">
+                <FileText className="w-4 h-4" /><span>Quotation Layout</span>
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Screen Preview Canvas: Executive drafting workspace */}
+      {/* Preview canvas */}
       <div className="preview-outer-wrap max-w-4xl mx-auto py-6 px-4">
-        {/* On-screen letterhead mode indicator note */}
-        <div className="no-print mb-4 p-3.5 rounded-xl bg-white border border-slate-300 text-xs text-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs">
+        <div className="no-print mb-4 corp-card p-3.5 text-xs text-ink-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <strong className="text-slate-900">Print Mode: </strong>
+            <strong className="text-ink-900">Print mode: </strong>
             {printOnLetterhead ? (
-              <span>
-                <strong className="text-blue-900">&quot;Pre-printed letterhead&quot; is ON</strong>. Top <strong>{settings.letterheadTop}in</strong> &amp; bottom <strong>{settings.letterheadBottom}in</strong> are left blank so your physical letterhead header and footer fit cleanly.
-              </span>
+              <span><strong className="text-navy-800">Pre-printed letterhead ON</strong> — top {settings.letterheadTop}″ &amp; bottom {settings.letterheadBottom}″ left blank for your physical letterhead.</span>
             ) : (
-              <span>
-                <strong className="text-emerald-700">Plain A4 Paper Mode (Letterhead OFF)</strong>. Official header for <strong>{currentFirmName}</strong> will be printed automatically.
-              </span>
+              <span><strong className="text-emerald-700">Plain A4 mode</strong> — the official {currentFirmName} header prints automatically.</span>
             )}
           </div>
-          <span className="text-[11px] font-bold text-blue-900 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-md self-start sm:self-auto shrink-0">
-            A4 Single-Page Fit Guaranteed
-          </span>
+          <span className="corp-chip bg-navy-50 text-navy-800 border border-navy-100 self-start sm:self-auto shrink-0">A4 · Single page</span>
         </div>
 
-        {/* Paper Sheet Preview */}
         <div
-          className="print-container bg-white shadow-xl mx-auto rounded-xs border border-slate-300 ring-1 ring-slate-400/30"
+          className="print-container bg-white shadow-[0_20px_60px_-20px_rgba(12,28,51,0.35)] mx-auto border border-line"
           style={{
             minHeight: '11in',
             width: '100%',
@@ -281,29 +232,9 @@ export const PreviewScreen: React.FC<Props> = ({
             paddingRight: '0.45in',
           }}
         >
-          {activeTab === 'BILL' && (
-            <BillPrintLayout
-              doc={doc}
-              settings={settings}
-              printOnLetterhead={printOnLetterhead}
-            />
-          )}
-
-          {activeTab === 'GST' && (
-            <GstInvoicePrintLayout
-              doc={doc}
-              settings={settings}
-              printOnLetterhead={printOnLetterhead}
-            />
-          )}
-
-          {activeTab === 'QUOTATION' && (
-            <QuotationPrintLayout
-              doc={doc}
-              settings={settings}
-              printOnLetterhead={printOnLetterhead}
-            />
-          )}
+          {activeTab === 'BILL' && <BillPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
+          {activeTab === 'GST' && <GstInvoicePrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
+          {activeTab === 'QUOTATION' && <QuotationPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
         </div>
       </div>
     </div>

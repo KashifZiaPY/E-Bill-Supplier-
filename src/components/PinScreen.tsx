@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Delete, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Delete, ArrowRight, ShieldCheck } from 'lucide-react';
 
 interface Props {
   onSuccess: (pin: string) => void;
@@ -44,26 +44,33 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
   const displayedError = errorMessage || localError;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0B1E36] via-[#103158] to-[#0B1E36] flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-blue-900/30 p-6 md:p-8 flex flex-col items-center">
-        {/* Header Icon */}
-        <div className="w-16 h-16 rounded-2xl bg-[#0B1E36] text-amber-300 shadow-md flex items-center justify-center mb-3">
-          <ShieldCheck className="w-9 h-9" />
+    <div className="min-h-screen bg-navy-950 flex flex-col justify-center items-center p-4 relative overflow-hidden">
+      {/* Subtle corporate backdrop */}
+      <div className="absolute inset-0 pointer-events-none" aria-hidden>
+        <div className="absolute -top-40 -right-40 w-[480px] h-[480px] rounded-full bg-navy-700/40 blur-[120px]" />
+        <div className="absolute -bottom-40 -left-40 w-[480px] h-[480px] rounded-full bg-gold-600/10 blur-[120px]" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-gold-600 via-gold-400 to-gold-600" />
+      </div>
+
+      <div className="relative w-full max-w-sm corp-card p-6 md:p-8 flex flex-col items-center">
+        {/* Brand mark */}
+        <div className="w-16 h-16 rounded-2xl bg-navy-900 text-gold-400 shadow-md flex items-center justify-center mb-4 ring-1 ring-gold-500/40">
+          <ShieldCheck className="w-8 h-8" />
         </div>
 
-        <h1 className="text-xl font-black text-slate-900 tracking-tight text-center">
+        <h1 className="text-lg font-extrabold text-ink-900 tracking-tight text-center">
           MIAN FARHAN ANWAR
         </h1>
-        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center mt-0.5">
-          Enterprise Billing &amp; Invoicing Portal
+        <p className="text-[11px] font-semibold text-ink-500 uppercase tracking-[0.14em] text-center mt-1">
+          Enterprise Billing Portal
         </p>
-        <span className="text-[10px] font-semibold text-blue-900 bg-blue-50 px-2.5 py-0.5 rounded-full mt-1.5 border border-blue-200">
+        <span className="corp-chip bg-navy-50 text-navy-800 border border-navy-100 mt-2.5">
           Anwar Traders · Hashir Traders
         </span>
 
-        {/* PIN Input representation */}
-        <div className="my-6 w-full">
-          <div className="flex justify-center gap-3 mb-3">
+        {/* PIN dots */}
+        <div className="mt-7 mb-4 w-full">
+          <div className="flex justify-center gap-3">
             {[0, 1, 2, 3].map((idx) => {
               const hasDigit = pin.length > idx;
               return (
@@ -71,18 +78,18 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
                   key={idx}
                   className={`w-12 h-14 rounded-xl border-2 flex items-center justify-center text-xl font-bold transition-all ${
                     hasDigit
-                      ? 'border-[#1F3A5F] bg-[#1F3A5F]/5 text-[#1F3A5F]'
-                      : 'border-slate-300 bg-slate-50 text-transparent'
+                      ? 'border-navy-700 bg-navy-50 text-navy-800'
+                      : 'border-line bg-paper text-transparent'
                   }`}
                 >
-                  {hasDigit ? '●' : '—'}
+                  {hasDigit ? '●' : '–'}
                 </div>
               );
             })}
           </div>
 
-          {/* Form for physical keyboard typing */}
-          <form onSubmit={handleSubmit} className="relative">
+          {/* Physical keyboard entry */}
+          <form onSubmit={handleSubmit} className="mt-4">
             <input
               type="password"
               inputMode="numeric"
@@ -98,29 +105,28 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
                   onSuccess(val);
                 }
               }}
-              placeholder="Type PIN here"
-              className="w-full text-center tracking-widest text-lg font-bold border border-slate-200 rounded-xl py-2 px-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1F3A5F]"
+              placeholder="Type PIN on keyboard"
+              className="corp-input text-center tracking-[0.3em] font-bold"
               maxLength={8}
             />
           </form>
         </div>
 
-        {/* Error message */}
         {displayedError && (
-          <div className="w-full mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium text-center animate-in fade-in">
+          <div className="w-full mb-4 px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 text-[#96291f] text-xs font-semibold text-center">
             {displayedError}
           </div>
         )}
 
         {/* Touch keypad */}
-        <div className="grid grid-cols-3 gap-3 w-full mb-4">
+        <div className="grid grid-cols-3 gap-2.5 w-full mb-4">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
             <button
               key={num}
               type="button"
               disabled={isLoading}
               onClick={() => handleKeyPress(String(num))}
-              className="h-14 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-xl font-bold text-slate-800 flex items-center justify-center transition shadow-sm cursor-pointer select-none"
+              className="h-13 py-3 rounded-xl bg-paper hover:bg-navy-50 active:bg-navy-100 text-lg font-bold text-ink-900 border border-transparent hover:border-navy-100 flex items-center justify-center transition select-none disabled:opacity-40"
             >
               {num}
             </button>
@@ -129,7 +135,7 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
             type="button"
             disabled={isLoading || pin.length === 0}
             onClick={handleClear}
-            className="h-14 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center justify-center transition shadow-sm cursor-pointer select-none disabled:opacity-40"
+            className="py-3 rounded-xl bg-paper hover:bg-navy-50 text-[11px] font-bold uppercase tracking-wider text-ink-500 flex items-center justify-center transition select-none disabled:opacity-40"
           >
             Clear
           </button>
@@ -137,7 +143,7 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
             type="button"
             disabled={isLoading}
             onClick={() => handleKeyPress('0')}
-            className="h-14 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-xl font-bold text-slate-800 flex items-center justify-center transition shadow-sm cursor-pointer select-none"
+            className="py-3 rounded-xl bg-paper hover:bg-navy-50 active:bg-navy-100 text-lg font-bold text-ink-900 border border-transparent hover:border-navy-100 flex items-center justify-center transition select-none disabled:opacity-40"
           >
             0
           </button>
@@ -145,41 +151,40 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
             type="button"
             disabled={isLoading || pin.length === 0}
             onClick={handleDelete}
-            className="h-14 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 flex items-center justify-center transition shadow-sm cursor-pointer select-none disabled:opacity-40"
-            aria-label="Delete"
+            className="py-3 rounded-xl bg-paper hover:bg-navy-50 text-ink-700 flex items-center justify-center transition select-none disabled:opacity-40"
+            aria-label="Delete digit"
           >
             <Delete className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Submit button */}
         <button
           type="button"
           onClick={() => handleSubmit()}
           disabled={isLoading || pin.length < 4}
-          className="w-full py-3.5 px-4 rounded-xl bg-[#1F3A5F] hover:bg-[#162a45] active:scale-[0.99] text-white font-bold flex items-center justify-center gap-2 shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="corp-btn-primary w-full py-3.5"
         >
           {isLoading ? (
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span>Verifying PIN...</span>
-            </div>
+            <>
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Verifying…</span>
+            </>
           ) : (
             <>
-              <span>Unlock App</span>
+              <span>Unlock Portal</span>
               <ArrowRight className="w-4 h-4" />
             </>
           )}
         </button>
 
-        <p className="text-[11px] text-slate-500 mt-4 text-center">
-          Default PIN is <strong>1234</strong> (or the PIN configured in your environment).
+        <p className="text-[11px] text-ink-400 mt-4 text-center">
+          Default PIN is <strong className="text-ink-700">1234</strong>
         </p>
       </div>
 
-      <div className="mt-6 text-center text-xs text-slate-500">
-        Developed by MKZ
-      </div>
+      <p className="relative mt-6 text-[11px] font-medium tracking-wide text-navy-200/70">
+        MIAN FARHAN ANWAR Enterprise Systems
+      </p>
     </div>
   );
 };

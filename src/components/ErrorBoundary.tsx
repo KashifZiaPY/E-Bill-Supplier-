@@ -48,19 +48,19 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 sm:p-8 max-w-lg w-full shadow-2xl">
-            <div className="flex items-center gap-3 text-amber-400 mb-4">
-              <div className="p-3 bg-amber-400/10 rounded-xl">
-                <AlertTriangle className="w-8 h-8 text-amber-400" />
-              </div>
+        <div className="min-h-screen bg-navy-950 text-white flex items-center justify-center p-4">
+          <div className="bg-white text-ink-900 rounded-2xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-line">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="w-12 h-12 rounded-xl bg-gold-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-gold-700" />
+              </span>
               <div>
-                <h1 className="text-xl font-black">Something went wrong</h1>
-                <p className="text-xs text-slate-400">An unexpected view error occurred</p>
+                <h1 className="text-xl font-extrabold tracking-tight">Something went wrong</h1>
+                <p className="text-xs text-ink-400">An unexpected error occurred</p>
               </div>
             </div>
 
-            <div className="p-3.5 bg-slate-950/80 border border-slate-700/60 rounded-xl text-xs text-rose-300 font-mono mb-6 overflow-x-auto max-h-36">
+            <div className="p-3.5 bg-paper border border-line rounded-xl text-xs text-[#96291f] font-mono mb-6 overflow-x-auto max-h-36">
               {this.state.error?.message || 'Unknown render error'}
             </div>
 
@@ -68,7 +68,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 type="button"
                 onClick={this.handleReset}
-                className="flex-1 py-2.5 px-4 bg-[#1F3A5F] hover:bg-[#284977] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition"
+                className="corp-btn-primary flex-1 text-xs"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Return to Home</span>
@@ -77,7 +77,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 type="button"
                 onClick={this.handleReload}
-                className="flex-1 py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition"
+                className="corp-btn-ghost flex-1 text-xs"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Reload Page</span>
@@ -86,7 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 type="button"
                 onClick={this.handleClearCache}
-                className="py-2.5 px-3 bg-rose-900/40 hover:bg-rose-900/70 text-rose-300 border border-rose-800/40 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition"
+                className="py-2.5 px-3 bg-red-50 hover:bg-red-100 text-[#b3372f] border border-red-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
                 title="Clear local cached data & restart"
               >
                 <Trash2 className="w-4 h-4" />
