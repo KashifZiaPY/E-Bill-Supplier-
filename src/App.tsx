@@ -18,8 +18,9 @@ import { EntryFormScreen } from './components/EntryFormScreen';
 import { PreviewScreen } from './components/PreviewScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { ClientModal } from './components/ClientModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastContainer, type ToastMessage } from './components/Toast';
-import { generateUUID } from './utils/formatters';
+import { generateUUID, safeNormalizeItems } from './utils/formatters';
 
 type Screen = 'HOME' | 'ENTRY_FORM' | 'PREVIEW' | 'SETTINGS';
 
@@ -175,36 +176,38 @@ export default function App() {
   };
 
   const handleSelectDoc = async (doc: DocumentRecord) => {
-    const docId = doc.docId || doc.DocID;
-    if (doc.items && doc.items.length > 0) {
-      setActiveDoc(doc);
-      setCurrentScreen('PREVIEW');
-      return;
-    }
-
-    if (docId) {
-      try {
-        const full = await gasApi.getDoc(docId);
-        const mergedDoc = { ...doc, items: full.items || doc.items || [] };
-        setActiveDoc(mergedDoc);
-      } catch {
-        setActiveDoc(doc);
-      }
-    } else {
-      setActiveDoc(doc);
-    }
+    const existingItems = safeNormalizeItems(doc.items || doc.Items);
+    const baseDoc = { ...doc, items: existingItems, Items: existingItems };
+    setActiveDoc(baseDoc);
     setCurrentScreen('PREVIEW');
+
+    const docId = doc.docId || doc.DocID;
+    if (existingItems.length === 0 && docId) {
+      try {
+        const full: any = await gasApi.getDoc(docId);
+        const fetchedItems = safeNormalizeItems(full?.items || full?.Items || full?.doc?.items);
+        if (fetchedItems.length > 0) {
+          setActiveDoc((prev) => (prev ? { ...prev, items: fetchedItems, Items: fetchedItems } : baseDoc));
+        }
+      } catch {
+        // baseDoc already displayed safely
+      }
+    }
   };
 
   const handleEditDoc = async (doc: DocumentRecord) => {
+    const existingItems = safeNormalizeItems(doc.items || doc.Items);
+    let fullDoc: DocumentRecord = { ...doc, items: existingItems, Items: existingItems };
     const docId = doc.docId || doc.DocID;
-    let fullDoc = doc;
-    if (docId && (!doc.items || doc.items.length === 0)) {
+    if (existingItems.length === 0 && docId) {
       try {
-        const full = await gasApi.getDoc(docId);
-        fullDoc = { ...doc, items: full.items || [] };
+        const full: any = await gasApi.getDoc(docId);
+        const fetchedItems = safeNormalizeItems(full?.items || full?.Items || full?.doc?.items);
+        if (fetchedItems.length > 0) {
+          fullDoc = { ...doc, items: fetchedItems, Items: fetchedItems };
+        }
       } catch {
-        // use doc
+        // fallback to base fullDoc
       }
     }
     setFormDocType(doc.type || doc.Type || 'BILL');
@@ -213,12 +216,16 @@ export default function App() {
   };
 
   const handleDuplicateDoc = async (doc: DocumentRecord) => {
+    const existingItems = safeNormalizeItems(doc.items || doc.Items);
+    let fullDoc: DocumentRecord = { ...doc, items: existingItems, Items: existingItems };
     const docId = doc.docId || doc.DocID;
-    let fullDoc = doc;
-    if (docId && (!doc.items || doc.items.length === 0)) {
+    if (existingItems.length === 0 && docId) {
       try {
-        const full = await gasApi.getDoc(docId);
-        fullDoc = { ...doc, items: full.items || [] };
+        const full: any = await gasApi.getDoc(docId);
+        const fetchedItems = safeNormalizeItems(full?.items || full?.Items || full?.doc?.items);
+        if (fetchedItems.length > 0) {
+          fullDoc = { ...doc, items: fetchedItems, Items: fetchedItems };
+        }
       } catch {
         // use doc
       }
@@ -243,14 +250,18 @@ export default function App() {
   };
 
   const handleMakeBillFromQuotation = async (quotationDoc: DocumentRecord) => {
+    const existingItems = safeNormalizeItems(quotationDoc.items || quotationDoc.Items);
+    let fullDoc: DocumentRecord = { ...quotationDoc, items: existingItems, Items: existingItems };
     const docId = quotationDoc.docId || quotationDoc.DocID;
-    let fullDoc = quotationDoc;
-    if (docId && (!quotationDoc.items || quotationDoc.items.length === 0)) {
+    if (existingItems.length === 0 && docId) {
       try {
-        const full = await gasApi.getDoc(docId);
-        fullDoc = { ...quotationDoc, items: full.items || [] };
+        const full: any = await gasApi.getDoc(docId);
+        const fetchedItems = safeNormalizeItems(full?.items || full?.Items || full?.doc?.items);
+        if (fetchedItems.length > 0) {
+          fullDoc = { ...quotationDoc, items: fetchedItems, Items: fetchedItems };
+        }
       } catch {
-        // use quotationDoc
+        // use doc
       }
     }
 
@@ -362,19 +373,19 @@ export default function App() {
   // If not authenticated, render PIN Screen
   if (!isAuthenticated) {
     return (
-      <>
+      <ErrorBoundary>
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         <PinScreen
           onSuccess={handlePinSubmit}
           isLoading={isVerifyingPin}
           errorMessage={pinError}
         />
-      </>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
       {/* Screen 2: HOME */}
@@ -405,6 +416,7 @@ export default function App() {
       {/* Screen 3: ENTRY FORM */}
       {currentScreen === 'ENTRY_FORM' && (
         <EntryFormScreen
+          key={editingDoc?.docId || editingDoc?.DocID || 'new-' + formDocType + '-' + (editingDoc?.requestId || 'new')}
           initialDoc={editingDoc}
           docType={formDocType}
           settings={settings}
@@ -417,13 +429,27 @@ export default function App() {
       )}
 
       {/* Screen 4: PREVIEW / PRINT */}
-      {currentScreen === 'PREVIEW' && activeDoc && (
-        <PreviewScreen
-          doc={activeDoc}
-          settings={settings}
-          onBack={() => setCurrentScreen('HOME')}
-          onEdit={() => handleEditDoc(activeDoc)}
-        />
+      {currentScreen === 'PREVIEW' && (
+        activeDoc ? (
+          <PreviewScreen
+            doc={activeDoc}
+            settings={settings}
+            onBack={() => setCurrentScreen('HOME')}
+            onEdit={() => handleEditDoc(activeDoc)}
+          />
+        ) : (
+          <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center max-w-sm shadow-sm">
+              <p className="text-slate-800 font-bold mb-4">No document selected</p>
+              <button
+                onClick={() => setCurrentScreen('HOME')}
+                className="px-5 py-2.5 rounded-xl bg-[#0F2544] hover:bg-[#1E3A8A] text-white font-bold text-xs transition cursor-pointer"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        )
       )}
 
       {/* SETTINGS SCREEN */}
@@ -443,6 +469,6 @@ export default function App() {
         onSave={handleSaveClient}
         clientToEdit={clientToEdit}
       />
-    </>
+    </ErrorBoundary>
   );
 }

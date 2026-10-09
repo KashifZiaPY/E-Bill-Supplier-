@@ -47,16 +47,19 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
     <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-slate-200 p-6 md:p-8 flex flex-col items-center">
         {/* Header Icon */}
-        <div className="w-16 h-16 rounded-2xl bg-[#1F3A5F]/10 flex items-center justify-center text-[#1F3A5F] mb-4">
+        <div className="w-16 h-16 rounded-2xl bg-[#0F2544]/10 flex items-center justify-center text-[#0F2544] mb-3">
           <ShieldCheck className="w-9 h-9" />
         </div>
 
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight text-center">
-          Anwar Traders
+        <h1 className="text-xl font-black text-slate-900 tracking-tight text-center">
+          MIAN FARHAN ANWAR
         </h1>
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest text-center mt-1">
-          Billing & Invoicing Portal
+        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center mt-0.5">
+          Enterprise Billing &amp; Invoicing Portal
         </p>
+        <span className="text-[10px] font-semibold text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded-full mt-1.5 border border-blue-200">
+          Anwar Traders · Hashir Traders
+        </span>
 
         {/* PIN Input representation */}
         <div className="my-6 w-full">

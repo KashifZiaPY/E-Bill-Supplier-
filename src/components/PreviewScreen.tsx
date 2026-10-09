@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Edit,
@@ -8,6 +8,7 @@ import {
   Building,
 } from 'lucide-react';
 import type { DocumentRecord, SupplierSettings } from '../types/billing';
+import { safeNormalizeItems } from '../utils/formatters';
 import { BillPrintLayout } from './print/BillPrintLayout';
 import { GstInvoicePrintLayout } from './print/GstInvoicePrintLayout';
 import { QuotationPrintLayout } from './print/QuotationPrintLayout';
@@ -27,14 +28,34 @@ export const PreviewScreen: React.FC<Props> = ({
   onBack,
   onEdit,
 }) => {
-  const docType = doc.type || doc.Type || 'BILL';
-  const items = doc.items || doc.Items || [];
-  const hasGstItems = items.some((i) => i.tax === 'GST' || (i as any).Tax === 'GST') || (doc.goodsSub ?? doc.GoodsSub ?? 0) > 0;
+  const safeDoc = {
+    ...doc,
+    items: safeNormalizeItems(doc?.items || doc?.Items),
+    Items: safeNormalizeItems(doc?.items || doc?.Items),
+  };
+  const docType = safeDoc.type || safeDoc.Type || 'BILL';
+  const items = safeDoc.items;
+  const hasGstItems = items.some((i) => i.tax === 'GST' || (i as any).Tax === 'GST') || (safeDoc.goodsSub ?? safeDoc.GoodsSub ?? 0) > 0;
 
   // Active tab: 'BILL' | 'GST' | 'QUOTATION'
   const [activeTab, setActiveTab] = useState<'BILL' | 'GST' | 'QUOTATION'>(() => {
     return docType === 'BILL' ? 'BILL' : 'QUOTATION';
   });
+
+  // Keyboard navigation: Escape key closes/exits preview immediately; Ctrl+P prints
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onBack();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        window.print();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onBack]);
 
   // Remember "Print on my letterhead" switch (default ON = true)
   const [printOnLetterhead, setPrintOnLetterhead] = useState<boolean>(() => {
@@ -112,13 +133,17 @@ export const PreviewScreen: React.FC<Props> = ({
       <div className="no-print bg-white border-b border-slate-300 sticky top-0 z-40 shadow-xs">
         <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           {/* Back & Doc Title */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={onBack}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer flex items-center gap-1.5"
+              title="Return to Dashboard (or press Escape)"
               aria-label="Back"
             >
               <ArrowLeft className="w-5 h-5" />
+              <span className="hidden sm:inline-block text-[10px] font-mono font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded shadow-2xs">
+                ESC
+              </span>
             </button>
             <div>
               <div className="flex items-center gap-2">

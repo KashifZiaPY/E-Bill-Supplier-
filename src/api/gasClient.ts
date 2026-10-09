@@ -1,7 +1,7 @@
 // Client for communicating with the serverless /api/gas proxy or local simulated storage
 
 import type { BootstrapData, DocumentRecord, FirmProfile, LineItem, SavedClient, SupplierSettings } from '../types/billing';
-import { calculateTotals } from '../utils/formatters';
+import { calculateTotals, safeNormalizeItems } from '../utils/formatters';
 
 const STORAGE_KEY_SETTINGS = 'anwar_traders_settings_v2';
 const STORAGE_KEY_CLIENTS = 'anwar_traders_clients_v2';
@@ -189,6 +189,247 @@ export const SEED_CLIENTS: SavedClient[] = [
   },
 ];
 
+/**
+ * Universal Client Normalizer:
+ * Safely extracts client details from objects, strings, or sheet row arrays.
+ * Guarantees every returned field is a primitive string to prevent any React render crash.
+ */
+export function normalizeSingleClient(raw: any, index: number = 0): SavedClient | null {
+  if (!raw) return null;
+
+  // 1. Case: raw is a plain string e.g. "Director General Health Services"
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    return {
+      id: 'client-' + trimmed.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 30),
+      name: trimmed,
+      Name: trimmed,
+      address: '',
+      Address: '',
+      ntn: '',
+      NTN: '',
+      strn: '',
+      STRN: '',
+      lastUsed: '',
+      LastUsed: '',
+    };
+  }
+
+  // 2. Case: raw is an array (raw Google Sheet row e.g. [Name, Address, NTN, STRN])
+  if (Array.isArray(raw)) {
+    const col0 = String(raw[0] || '').trim();
+    // Skip header row
+    if (!col0 || col0.toLowerCase() === 'name' || col0.toLowerCase() === 'client name') {
+      return null;
+    }
+    const name = col0;
+    const address = String(raw[1] || '').trim();
+    const ntn = String(raw[2] || '').trim();
+    const strn = String(raw[3] || '').trim();
+    return {
+      id: 'client-row-' + index + '-' + name.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20),
+      name,
+      Name: name,
+      address,
+      Address: address,
+      ntn,
+      NTN: ntn,
+      strn,
+      STRN: strn,
+      lastUsed: '',
+      LastUsed: '',
+    };
+  }
+
+  // 3. Case: raw is an object
+  if (typeof raw === 'object') {
+    const name = String(raw.name || raw.Name || raw.clientName || raw.ClientName || '').trim();
+    if (!name) return null;
+
+    const address = String(raw.address || raw.Address || raw.clientAddress || raw.ClientAddress || '').trim();
+    const ntn = String(raw.ntn || raw.NTN || raw.clientNTN || raw.ClientNTN || '').trim();
+    const strn = String(raw.strn || raw.STRN || raw.clientSTRN || raw.ClientSTRN || '').trim();
+    const lastUsed = String(raw.lastUsed || raw.LastUsed || '').trim();
+    const phone = String(raw.phone || raw.Phone || '').trim();
+    const contactPerson = String(raw.contactPerson || raw.ContactPerson || '').trim();
+    const totalOrders = Number(raw.totalOrders || raw.TotalOrders || 0) || 0;
+    const totalBilled = Number(raw.totalBilled || raw.TotalBilled || 0) || 0;
+
+    return {
+      id: String(raw.id || raw.ID || 'client-' + name.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 30)),
+      name,
+      Name: name,
+      address,
+      Address: address,
+      ntn,
+      NTN: ntn,
+      strn,
+      STRN: strn,
+      lastUsed,
+      LastUsed: lastUsed,
+      phone,
+      contactPerson,
+      totalOrders,
+      totalBilled,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Normalizes client list AND augments clients with any unique clients found in documents.
+ * This guarantees that even if the backend 'Clients' sheet is missing or empty,
+ * all clients ever used in past bills are instantly available in typeaheads!
+ */
+export function normalizeClientsList(rawClients: any, docs: any[] = []): SavedClient[] {
+  const clientMap = new Map<string, SavedClient>();
+
+  // 1. Process explicit clients
+  if (Array.isArray(rawClients)) {
+    rawClients.forEach((raw, i) => {
+      const norm = normalizeSingleClient(raw, i);
+      if (norm && norm.name) {
+        clientMap.set(norm.name.toLowerCase().trim(), norm);
+      }
+    });
+  }
+
+  // 2. Scan past documents for clients
+  if (Array.isArray(docs)) {
+    docs.forEach((d) => {
+      const docClientName = String(d.clientName || d.ClientName || '').trim();
+      if (!docClientName) return;
+
+      const key = docClientName.toLowerCase();
+      const existing = clientMap.get(key);
+
+      const docAddress = String(d.clientAddress || d.ClientAddress || '').trim();
+      const docNTN = String(d.clientNTN || d.ClientNTN || '').trim();
+      const docDate = String(d.date || d.Date || '').trim();
+      const docTotal = Number(d.grandTotal ?? d.GrandTotal ?? 0) || 0;
+
+      if (!existing) {
+        clientMap.set(key, {
+          id: 'client-doc-' + key.replace(/[^a-z0-9]/g, '-').substring(0, 30),
+          name: docClientName,
+          Name: docClientName,
+          address: docAddress,
+          Address: docAddress,
+          ntn: docNTN,
+          NTN: docNTN,
+          strn: '',
+          STRN: '',
+          lastUsed: docDate,
+          LastUsed: docDate,
+          totalOrders: 1,
+          totalBilled: docTotal,
+        });
+      } else {
+        // Augment missing details if document has them
+        if (!existing.address && docAddress) {
+          existing.address = docAddress;
+          existing.Address = docAddress;
+        }
+        if (!existing.ntn && docNTN) {
+          existing.ntn = docNTN;
+          existing.NTN = docNTN;
+        }
+        if (!existing.lastUsed && docDate) {
+          existing.lastUsed = docDate;
+          existing.LastUsed = docDate;
+        }
+        existing.totalOrders = (existing.totalOrders || 0) + 1;
+        existing.totalBilled = (existing.totalBilled || 0) + docTotal;
+      }
+    });
+  }
+
+  // Fallback to seed clients if nothing exists
+  if (clientMap.size === 0) {
+    SEED_CLIENTS.forEach((c) => clientMap.set(c.name.toLowerCase(), c));
+  }
+
+  return Array.from(clientMap.values());
+}
+
+/**
+ * Safely normalizes documents from Google Apps Script or local storage.
+ */
+export function normalizeDocsList(rawDocs: any): DocumentRecord[] {
+  if (!Array.isArray(rawDocs)) return [SEED_PETTY_DOC];
+
+  return rawDocs.map((d: any, idx: number) => {
+    const docId = String(d.docId || d.DocID || 'doc-' + idx);
+    const docNo = String(d.docNo || d.DocNo || '');
+    const type = (d.type || d.Type || 'BILL').toUpperCase() === 'QUOTATION' ? 'QUOTATION' : 'BILL';
+    const date = String(d.date || d.Date || '');
+    const validUntil = d.validUntil || d.ValidUntil ? String(d.validUntil || d.ValidUntil) : undefined;
+    const clientName = String(d.clientName || d.ClientName || 'Unnamed Client');
+    const clientAddress = String(d.clientAddress || d.ClientAddress || '');
+    const clientNTN = String(d.clientNTN || d.ClientNTN || '');
+    const clientSTRN = String(d.clientSTRN || d.ClientSTRN || '');
+    const refText = String(d.refText || d.RefText || '');
+    const requestId = String(d.requestId || d.RequestId || '');
+    const firmId = String(d.firmId || '');
+    const firmName = String(d.firmName || '');
+    const status = String(d.status || d.Status || 'Active');
+
+    const items: LineItem[] = safeNormalizeItems(d.items || d.Items || d.itemsJson || d.ItemsJson);
+
+    const goodsSub = Number(d.goodsSub ?? d.GoodsSub ?? 0);
+    const gst = Number(d.gst ?? d.GST ?? 0);
+    const serviceSub = Number(d.serviceSub ?? d.ServiceSub ?? 0);
+    const pst = Number(d.pst ?? d.PST ?? 0);
+    const otherSub = Number(d.otherSub ?? d.OtherSub ?? 0);
+    const grandTotal = Number(d.grandTotal ?? d.GrandTotal ?? 0);
+
+    return {
+      docId,
+      DocID: docId,
+      firmId,
+      firmName,
+      type,
+      Type: type,
+      docNo,
+      DocNo: docNo,
+      date,
+      Date: date,
+      validUntil,
+      ValidUntil: validUntil,
+      clientName,
+      ClientName: clientName,
+      clientAddress,
+      ClientAddress: clientAddress,
+      clientNTN,
+      ClientNTN: clientNTN,
+      clientSTRN,
+      ClientSTRN: clientSTRN,
+      refText,
+      RefText: refText,
+      requestId,
+      RequestId: requestId,
+      goodsSub,
+      GoodsSub: goodsSub,
+      gst,
+      GST: gst,
+      serviceSub,
+      ServiceSub: serviceSub,
+      pst,
+      PST: pst,
+      otherSub,
+      OtherSub: otherSub,
+      grandTotal,
+      GrandTotal: grandTotal,
+      status,
+      Status: status,
+      items,
+      Items: items,
+    };
+  });
+}
+
 class GasClient {
   private pin: string = '';
   private isOfflineMode: boolean = false;
@@ -281,36 +522,45 @@ class GasClient {
         const storedCatalog = localStorage.getItem(STORAGE_KEY_CATALOG);
 
         let settings: SupplierSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS;
-        // Migration check: ensure firms exist
         if (!settings.firms || settings.firms.length === 0) {
           settings.firms = DEFAULT_FIRMS;
           settings.ownerName = settings.ownerName || 'MIAN FARHAN ANWAR';
           settings.activeFirmId = settings.activeFirmId || DEFAULT_FIRMS[0].id;
         }
 
-        const clients: SavedClient[] = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
-        const docs: DocumentRecord[] = storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC];
+        const rawDocs = storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC];
+        const docs = normalizeDocsList(rawDocs);
+
+        const rawClients = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
+        const clients = normalizeClientsList(rawClients, docs);
+
         const catalog = storedCatalog ? JSON.parse(storedCatalog) : SEED_CATALOG;
 
-        if (!storedSettings) localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-        if (!storedClients) localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
-        if (!storedDocs) localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
-        if (!storedCatalog) localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(catalog));
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
+        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
+        localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(catalog));
 
         return { settings, clients, docs, catalog };
       }
 
       case 'getDoc': {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs: DocumentRecord[] = storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC];
-        const doc = docs.find((d) => (d.docId || d.DocID) === payload.docId);
-        if (!doc) throw new Error('Document not found');
-        return { doc, items: doc.items || [] };
+        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
+        const targetId = String(payload?.docId || '');
+        const found = docs.find((d) => String(d.docId || d.DocID || '') === targetId);
+        if (found) {
+          return { doc: found, items: safeNormalizeItems(found.items || found.Items) };
+        }
+        return {
+          doc: { docId: targetId, type: 'BILL', docNo: '', date: '', clientName: '', refText: '', items: [] } as any,
+          items: [],
+        };
       }
 
       case 'saveDoc': {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs: DocumentRecord[] = storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC];
+        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
 
         const storedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
         const settings: SupplierSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS;
@@ -319,7 +569,6 @@ class GasClient {
         const isNew = !docToSave.docId && !docToSave.DocID;
         const docId = docToSave.docId || docToSave.DocID || 'doc-' + Date.now();
 
-        // Active firm identification
         const activeFirm = (settings.firms || []).find((f) => f.id === docToSave.firmId) || settings.firms?.[0] || DEFAULT_FIRMS[0];
 
         let docNo = docToSave.docNo || docToSave.DocNo;
@@ -340,7 +589,6 @@ class GasClient {
           localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
         }
 
-        // Live calculation of totals
         const totals = calculateTotals(docToSave.items || docToSave.Items || [], activeFirm.gstRate, activeFirm.pstRate);
 
         const fullRecord: DocumentRecord = {
@@ -385,23 +633,33 @@ class GasClient {
         }
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
 
-        // Auto-save Client
+        // Auto-save Client locally as well
         if (docToSave.clientName) {
           const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-          const clients: SavedClient[] = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
-          const existing = clients.find((c) => c.name.toLowerCase() === docToSave.clientName.toLowerCase());
+          const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : SEED_CLIENTS, docs);
+          const cNameLower = String(docToSave.clientName).toLowerCase().trim();
+          const existing = clients.find((c) => c.name.toLowerCase().trim() === cNameLower);
           if (!existing) {
-            clients.push({
+            clients.unshift({
               id: 'client-' + Date.now(),
-              name: docToSave.clientName,
-              address: docToSave.clientAddress || '',
-              ntn: docToSave.clientNTN || '',
+              name: String(docToSave.clientName).trim(),
+              Name: String(docToSave.clientName).trim(),
+              address: String(docToSave.clientAddress || '').trim(),
+              Address: String(docToSave.clientAddress || '').trim(),
+              ntn: String(docToSave.clientNTN || '').trim(),
+              NTN: String(docToSave.clientNTN || '').trim(),
+              lastUsed: String(docToSave.date || '').trim(),
+              LastUsed: String(docToSave.date || '').trim(),
               totalOrders: 1,
               totalBilled: totals.grandTotal,
             });
           } else {
-            existing.address = docToSave.clientAddress || existing.address;
-            existing.ntn = docToSave.clientNTN || existing.ntn;
+            existing.address = String(docToSave.clientAddress || existing.address).trim();
+            existing.Address = existing.address;
+            existing.ntn = String(docToSave.clientNTN || existing.ntn).trim();
+            existing.NTN = existing.ntn;
+            existing.lastUsed = String(docToSave.date || existing.lastUsed).trim();
+            existing.LastUsed = existing.lastUsed;
             existing.totalOrders = (existing.totalOrders || 0) + 1;
             existing.totalBilled = (existing.totalBilled || 0) + totals.grandTotal;
           }
@@ -414,12 +672,13 @@ class GasClient {
           const storedCatalog = localStorage.getItem(STORAGE_KEY_CATALOG);
           const catalog = storedCatalog ? JSON.parse(storedCatalog) : SEED_CATALOG;
           for (const item of rowItems) {
-            if (item.description && !catalog.find((c: any) => c.description.toLowerCase() === item.description.toLowerCase())) {
+            const desc = String(item.description || item.Description || '').trim();
+            if (desc && !catalog.find((c: any) => c.description.toLowerCase() === desc.toLowerCase())) {
               catalog.push({
-                description: item.description,
-                unit: item.unit || 'Nos',
-                rate: item.rate || 0,
-                tax: item.tax || 'GST',
+                description: desc,
+                unit: item.unit || item.Unit || 'Nos',
+                rate: Number(item.rate ?? item.Rate ?? 0),
+                tax: item.tax || item.Tax || 'GST',
               });
             }
           }
@@ -431,7 +690,7 @@ class GasClient {
 
       case 'cancelDoc': {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs: DocumentRecord[] = storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC];
+        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
         const doc = docs.find((d) => (d.docId || d.DocID) === payload.docId);
         if (doc) {
           doc.status = 'Cancelled';
@@ -448,22 +707,27 @@ class GasClient {
 
       case 'saveClient': {
         const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-        const clients: SavedClient[] = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
-        const newClient = payload.client;
-        const idx = clients.findIndex((c) => c.id === newClient.id || c.name.toLowerCase() === newClient.name.toLowerCase());
+        const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : SEED_CLIENTS);
+        const norm = normalizeSingleClient(payload.client) || payload.client;
+        const normNameLower = norm.name.toLowerCase().trim();
+        const idx = clients.findIndex((c) => c.id === norm.id || c.name.toLowerCase().trim() === normNameLower);
         if (idx >= 0) {
-          clients[idx] = { ...clients[idx], ...newClient };
+          clients[idx] = { ...clients[idx], ...norm };
         } else {
-          clients.unshift({ ...newClient, id: newClient.id || 'client-' + Date.now() });
+          clients.unshift(norm);
         }
         localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
-        return { ok: true, client: newClient };
+        return { ok: true, client: norm };
       }
 
       case 'deleteClient': {
         const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-        const clients: SavedClient[] = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
-        const filtered = clients.filter((c) => c.id !== payload.clientId && c.name !== payload.clientName);
+        const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : SEED_CLIENTS);
+        const targetId = payload.clientId;
+        const targetNameLower = String(payload.clientName || '').toLowerCase().trim();
+        const filtered = clients.filter(
+          (c) => c.id !== targetId && (!targetNameLower || c.name.toLowerCase().trim() !== targetNameLower)
+        );
         localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(filtered));
         return { ok: true };
       }
@@ -476,13 +740,53 @@ class GasClient {
   // --- Public API methods ---
 
   async bootstrap(): Promise<BootstrapData> {
-    const res = await this.callGas('bootstrap', {});
-    return res;
+    try {
+      const res = await this.callGas('bootstrap', {});
+      if (res) {
+        const rawSettings = res.settings;
+        let settings: SupplierSettings = rawSettings || DEFAULT_SETTINGS;
+        if (!settings.firms || settings.firms.length === 0) {
+          settings.firms = DEFAULT_FIRMS;
+          settings.ownerName = settings.ownerName || 'MIAN FARHAN ANWAR';
+          settings.activeFirmId = settings.activeFirmId || DEFAULT_FIRMS[0].id;
+        }
+
+        const rawDocs = res.docs || [];
+        const docs = normalizeDocsList(rawDocs);
+
+        const rawClients = res.clients || [];
+        const clients = normalizeClientsList(rawClients, docs);
+
+        const catalog = Array.isArray(res.catalog) ? res.catalog : SEED_CATALOG;
+
+        // Sync local storage cache
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
+        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
+        localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(catalog));
+
+        return { settings, clients, docs, catalog };
+      }
+      return this.localCall('bootstrap', {});
+    } catch (err) {
+      console.warn('Bootstrap failed, falling back to local cache:', err);
+      return this.localCall('bootstrap', {});
+    }
   }
 
   async getDoc(docId: string): Promise<{ doc: DocumentRecord; items: LineItem[] }> {
-    const res = await this.callGas('getDoc', { docId });
-    return res;
+    try {
+      const res = await this.callGas('getDoc', { docId });
+      if (res && typeof res === 'object') {
+        const rawItems = res.items || res.Items || res.data?.items || res.doc?.items || res.doc?.Items || [];
+        const normItems = safeNormalizeItems(rawItems);
+        const docObj = res.doc || res.data?.doc || res;
+        return { doc: { ...docObj, items: normItems }, items: normItems };
+      }
+      return this.localCall('getDoc', { docId });
+    } catch {
+      return this.localCall('getDoc', { docId });
+    }
   }
 
   async saveDoc(doc: any): Promise<{ ok: boolean; docId: string; docNo: string }> {
@@ -491,19 +795,22 @@ class GasClient {
       const q = Number(it.qty ?? it.Qty ?? 1);
       const r = Number(it.rate ?? it.Rate ?? 0);
       const a = Number(it.amount ?? it.Amount ?? Math.round(q * r * 100) / 100);
+      const desc = String(it.description || it.Description || '');
+      const unit = String(it.unit || it.Unit || 'Nos');
+      const tax = it.tax || it.Tax || 'GST';
       return {
-        sr: it.sr || idx + 1,
-        Sr: it.sr || idx + 1,
-        description: it.description || it.Description || '',
-        Description: it.description || it.Description || '',
-        unit: it.unit || it.Unit || 'Nos',
-        Unit: it.unit || it.Unit || 'Nos',
+        sr: it.sr || it.Sr || idx + 1,
+        Sr: it.sr || it.Sr || idx + 1,
+        description: desc,
+        Description: desc,
+        unit: unit,
+        Unit: unit,
         qty: q,
         Qty: q,
         rate: r,
         Rate: r,
-        tax: it.tax || it.Tax || 'GST',
-        Tax: it.tax || it.Tax || 'GST',
+        tax: tax,
+        Tax: tax,
         amount: a,
         Amount: a,
       };
@@ -511,6 +818,10 @@ class GasClient {
 
     // Ensure live totals are calculated and attached
     const totals = calculateTotals(normalizedItems, doc.gstRate || 0.18, doc.pstRate || 0.16);
+
+    const clientNameStr = String(doc.clientName || doc.ClientName || '').trim();
+    const clientAddressStr = String(doc.clientAddress || doc.ClientAddress || '').trim();
+    const clientNTNStr = String(doc.clientNTN || doc.ClientNTN || '').trim();
 
     const normalizedDoc = {
       ...doc,
@@ -526,14 +837,14 @@ class GasClient {
       Date: doc.date || doc.Date || '',
       validUntil: doc.validUntil || doc.ValidUntil || '',
       ValidUntil: doc.validUntil || doc.ValidUntil || '',
-      clientName: doc.clientName || doc.ClientName || '',
-      ClientName: doc.clientName || doc.ClientName || '',
-      clientAddress: doc.clientAddress || doc.ClientAddress || '',
-      ClientAddress: doc.clientAddress || doc.ClientAddress || '',
-      clientNTN: doc.clientNTN || doc.ClientNTN || '',
-      ClientNTN: doc.clientNTN || doc.ClientNTN || '',
-      refText: doc.refText || doc.RefText || '',
-      RefText: doc.refText || doc.RefText || '',
+      clientName: clientNameStr,
+      ClientName: clientNameStr,
+      clientAddress: clientAddressStr,
+      ClientAddress: clientAddressStr,
+      clientNTN: clientNTNStr,
+      ClientNTN: clientNTNStr,
+      refText: String(doc.refText || doc.RefText || '').trim(),
+      RefText: String(doc.refText || doc.RefText || '').trim(),
       requestId: doc.requestId || doc.RequestId || '',
       RequestId: doc.requestId || doc.RequestId || '',
       goodsSub: totals.goodsSub,
@@ -552,25 +863,61 @@ class GasClient {
       Items: normalizedItems,
     };
 
-    const res = await this.callGas('saveDoc', { doc: normalizedDoc });
-    return res;
+    let backendResult: any;
+    try {
+      backendResult = await this.callGas('saveDoc', { doc: normalizedDoc });
+    } catch (err) {
+      console.warn('Backend saveDoc call failed or offline, saving locally:', err);
+      return this.localCall('saveDoc', { doc: normalizedDoc });
+    }
+
+    // Always update local cache on successful save
+    this.localCall('saveDoc', {
+      doc: {
+        ...normalizedDoc,
+        docId: backendResult?.docId || normalizedDoc.docId,
+        docNo: backendResult?.docNo || normalizedDoc.docNo,
+      },
+    });
+
+    return backendResult;
   }
 
   async cancelDoc(docId: string): Promise<{ ok: boolean }> {
-    const res = await this.callGas('cancelDoc', { docId });
-    return res;
+    try {
+      await this.callGas('cancelDoc', { docId });
+    } catch {
+      // ignore
+    }
+    return this.localCall('cancelDoc', { docId });
   }
 
   async saveSettings(settings: SupplierSettings): Promise<{ ok: boolean }> {
-    const res = await this.callGas('saveSettings', { settings });
-    return res;
+    try {
+      await this.callGas('saveSettings', { settings });
+    } catch {
+      // ignore
+    }
+    return this.localCall('saveSettings', { settings });
   }
 
-  async saveClient(client: SavedClient): Promise<{ ok: boolean }> {
-    return this.localCall('saveClient', { client });
+  async saveClient(client: SavedClient): Promise<{ ok: boolean; client?: SavedClient }> {
+    const norm = normalizeSingleClient(client) || client;
+    try {
+      // Try calling backend GAS if supported
+      await this.callGas('saveClient', { client: norm });
+    } catch {
+      // Backend may not have explicit saveClient action, which is normal
+    }
+    return this.localCall('saveClient', { client: norm });
   }
 
   async deleteClient(clientId: string, clientName?: string): Promise<{ ok: boolean }> {
+    try {
+      await this.callGas('deleteClient', { clientId, clientName });
+    } catch {
+      // ignore
+    }
     return this.localCall('deleteClient', { clientId, clientName });
   }
 

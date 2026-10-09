@@ -1,4 +1,5 @@
 // Formatters for Pakistani Currency, Dates, and Calculation helpers
+import type { LineItem, TaxType } from '../types/billing';
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -89,10 +90,89 @@ export function generateUUID(): string {
 }
 
 /**
- * Calculates live totals given line items and tax rates
+ * Safely parses and normalizes items from any backend representation
+ * (array, JSON string, or nested object)
+ */
+export function safeNormalizeItems(raw: any): LineItem[] {
+  if (!raw) return [];
+
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        parsed = [];
+      }
+    } else {
+      return [];
+    }
+  }
+
+  // If single object was returned
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    if (Array.isArray(parsed.items || parsed.Items)) {
+      parsed = parsed.items || parsed.Items;
+    } else {
+      parsed = [parsed];
+    }
+  }
+
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed.map((it: any, idx: number) => {
+    if (!it || typeof it !== 'object') {
+      return {
+        id: 'item-' + idx,
+        sr: idx + 1,
+        description: String(it || ''),
+        unit: 'Nos',
+        qty: 1,
+        rate: 0,
+        tax: 'GST' as TaxType,
+        amount: 0,
+      };
+    }
+
+    const q = Number(it.qty ?? it.Qty ?? 1);
+    const validQty = isNaN(q) ? 1 : q;
+    const r = Number(it.rate ?? it.Rate ?? 0);
+    const validRate = isNaN(r) ? 0 : r;
+    const calcAmount = Math.round(validQty * validRate * 100) / 100;
+    const a = it.amount ?? it.Amount ?? calcAmount;
+    const validAmount = isNaN(Number(a)) ? calcAmount : Number(a);
+
+    const desc = String(it.description || it.Description || '');
+    const unit = String(it.unit || it.Unit || 'Nos');
+    const taxRaw = String(it.tax || it.Tax || 'GST').toUpperCase();
+    const tax: TaxType = taxRaw === 'PST' ? 'PST' : taxRaw === 'NONE' ? 'None' : 'GST';
+
+    return {
+      id: String(it.id || 'item-' + idx + '-' + Date.now()),
+      sr: Number(it.sr ?? it.Sr ?? idx + 1),
+      Sr: Number(it.sr ?? it.Sr ?? idx + 1),
+      description: desc,
+      Description: desc,
+      unit: unit,
+      Unit: unit,
+      qty: validQty,
+      Qty: validQty,
+      rate: validRate,
+      Rate: validRate,
+      tax: tax,
+      Tax: tax,
+      amount: validAmount,
+      Amount: validAmount,
+    };
+  });
+}
+
+/**
+ * Calculates live totals given line items and tax rates (100% defensive)
  */
 export function calculateTotals(
-  items: Array<{ qty: number; rate: number; tax: 'GST' | 'PST' | 'None' }>,
+  items: any,
   gstRate: number = 0.18,
   pstRate: number = 0.16
 ) {
@@ -100,8 +180,10 @@ export function calculateTotals(
   let serviceSub = 0;
   let otherSub = 0;
 
-  for (const item of items) {
-    const amount = (Number(item.qty) || 0) * (Number(item.rate) || 0);
+  const safeList = safeNormalizeItems(items);
+
+  for (const item of safeList) {
+    const amount = Number(item.amount ?? (item.qty * item.rate)) || 0;
     if (item.tax === 'GST') {
       goodsSub += amount;
     } else if (item.tax === 'PST') {
@@ -116,8 +198,8 @@ export function calculateTotals(
   const serviceSubRounded = Math.round(serviceSub * 100) / 100;
   const otherSubRounded = Math.round(otherSub * 100) / 100;
 
-  const gst = Math.round(goodsSubRounded * gstRate * 100) / 100;
-  const pst = Math.round(serviceSubRounded * pstRate * 100) / 100;
+  const gst = Math.round(goodsSubRounded * (Number(gstRate) || 0.18) * 100) / 100;
+  const pst = Math.round(serviceSubRounded * (Number(pstRate) || 0.16) * 100) / 100;
 
   const grandTotal = Math.round((goodsSubRounded + gst + serviceSubRounded + pst + otherSubRounded) * 100) / 100;
 

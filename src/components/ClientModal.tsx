@@ -15,13 +15,31 @@ export const ClientModal: React.FC<Props> = ({
   onSave,
   clientToEdit,
 }) => {
-  const [name, setName] = useState(clientToEdit?.name || '');
-  const [address, setAddress] = useState(clientToEdit?.address || '');
-  const [ntn, setNtn] = useState(clientToEdit?.ntn || '');
-  const [phone, setPhone] = useState(clientToEdit?.phone || '');
-  const [contactPerson, setContactPerson] = useState(clientToEdit?.contactPerson || '');
+  const [name, setName] = useState(clientToEdit?.name || (clientToEdit as any)?.Name || '');
+  const [address, setAddress] = useState(clientToEdit?.address || (clientToEdit as any)?.Address || '');
+  const [ntn, setNtn] = useState(clientToEdit?.ntn || (clientToEdit as any)?.NTN || '');
+  const [strn, setStrn] = useState(clientToEdit?.strn || (clientToEdit as any)?.STRN || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setName(String(clientToEdit?.name || (clientToEdit as any)?.Name || ''));
+      setAddress(String(clientToEdit?.address || (clientToEdit as any)?.Address || ''));
+      setNtn(String(clientToEdit?.ntn || (clientToEdit as any)?.NTN || ''));
+      setStrn(String(clientToEdit?.strn || (clientToEdit as any)?.STRN || ''));
+      setError('');
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen, clientToEdit, onClose]);
 
   if (!isOpen) return null;
 
@@ -35,15 +53,19 @@ export const ClientModal: React.FC<Props> = ({
     setIsSubmitting(true);
     setError('');
     try {
+      const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
       await onSave({
         id: clientToEdit?.id || 'client-' + Date.now(),
         name: name.trim(),
+        Name: name.trim(),
         address: address.trim(),
+        Address: address.trim(),
         ntn: ntn.trim(),
-        phone: phone.trim(),
-        contactPerson: contactPerson.trim(),
-        totalOrders: clientToEdit?.totalOrders || 0,
-        totalBilled: clientToEdit?.totalBilled || 0,
+        NTN: ntn.trim(),
+        strn: strn.trim(),
+        STRN: strn.trim(),
+        lastUsed: clientToEdit?.lastUsed || (clientToEdit as any)?.LastUsed || now,
+        LastUsed: clientToEdit?.lastUsed || (clientToEdit as any)?.LastUsed || now,
       });
       onClose();
     } catch (err: any) {
@@ -67,13 +89,13 @@ export const ClientModal: React.FC<Props> = ({
                 {clientToEdit ? 'Edit Client Record' : 'Register New Client'}
               </h3>
               <p className="text-xs text-blue-200">
-                Government departments, authorities & corporate buyers
+                Matches Google Sheet Clients registry (Name, Address, NTN, STRN)
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-white/70 hover:text-white p-1 rounded-lg transition"
+            className="text-white/70 hover:text-white p-1 rounded-lg transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -123,32 +145,19 @@ export const ClientModal: React.FC<Props> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                Phone / Landline
+                Sales Tax Reg # (STRN)
               </label>
               <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. 042-99201139"
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none text-slate-900"
+                  value={strn}
+                  onChange={(e) => setStrn(e.target.value)}
+                  placeholder="e.g. 07-01-9876-543-21"
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none font-mono text-slate-900"
                 />
               </div>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-              Contact Person / Designation
-            </label>
-            <input
-              type="text"
-              value={contactPerson}
-              onChange={(e) => setContactPerson(e.target.value)}
-              placeholder="e.g. Section Officer (Procurement)"
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none text-slate-900"
-            />
           </div>
 
           <div>
@@ -160,7 +169,7 @@ export const ClientModal: React.FC<Props> = ({
               <textarea
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                rows={2}
+                rows={2.5}
                 placeholder="e.g. 24-Cooper Road, Lahore"
                 className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none text-slate-900"
               />
@@ -172,14 +181,14 @@ export const ClientModal: React.FC<Props> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2 text-xs font-bold text-white bg-[#0F2544] hover:bg-[#1E3A8A] rounded-xl shadow-md transition disabled:opacity-50 flex items-center gap-1.5"
+              className="px-5 py-2 text-xs font-bold text-white bg-[#0F2544] hover:bg-[#1E3A8A] rounded-xl shadow-md transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
             >
               {isSubmitting && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
               <span>{clientToEdit ? 'Save Changes' : 'Save Client'}</span>

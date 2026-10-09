@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   FileText,
   FilePlus,
@@ -21,9 +21,11 @@ import {
   TrendingUp,
   Receipt,
   Printer,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import type { DocumentRecord, SavedClient, SupplierSettings } from '../types/billing';
-import { formatCurrency, formatDateDisplay } from '../utils/formatters';
+import { formatCurrency, formatDateDisplay, safeNormalizeItems } from '../utils/formatters';
 
 interface Props {
   docs: DocumentRecord[];
@@ -72,6 +74,26 @@ export const HomeScreen: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS'>('DOCUMENTS');
   const [docFilter, setDocFilter] = useState<'ALL' | 'BILL' | 'QUOTATION'>('ALL');
   const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Global Keyboard shortcuts: '/' focuses main search box, 'Escape' clears search / closes dropdown
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'Escape') {
+        if (activeMenuDocId) {
+          setActiveMenuDocId(null);
+        } else if (searchQuery && document.activeElement === searchInputRef.current) {
+          setSearchQuery('');
+          searchInputRef.current?.blur();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeMenuDocId, searchQuery]);
 
   const firms = settings.firms && settings.firms.length > 0 ? settings.firms : [
     {
@@ -94,31 +116,102 @@ export const HomeScreen: React.FC<Props> = ({
 
   const currentFirm = firms.find((f) => f.id === activeFirmId) || firms[0];
 
-  // Filter docs newest first & respect search and firm filter
+  // Comprehensive Omnisearch Document Filtering (Search anything: Doc#, Bill#, Value, Client, Item, Ref, Date, Status, Firm)
   const filteredDocs = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const rawQ = String(searchQuery || '').trim();
+    if (!rawQ && docFilter === 'ALL') return docs;
+
+    const q = rawQ.toLowerCase();
+    const cleanNum = rawQ.replace(/[^0-9.]/g, '');
+
     return docs.filter((d) => {
-      const matchesType = docFilter === 'ALL' || (d.type || d.Type) === docFilter;
+      const type = String(d.type || d.Type || 'BILL').toUpperCase();
+      const matchesType = docFilter === 'ALL' || type === docFilter;
       if (!matchesType) return false;
 
       if (!q) return true;
-      const no = (d.docNo || d.DocNo || '').toLowerCase();
-      const client = (d.clientName || d.ClientName || '').toLowerCase();
-      const ref = (d.refText || d.RefText || '').toLowerCase();
-      const firm = (d.firmName || '').toLowerCase();
-      return no.includes(q) || client.includes(q) || ref.includes(q) || firm.includes(q);
+
+      // 1. Doc number, type, bill #
+      const docNo = String(d.docNo ?? d.DocNo ?? '').toLowerCase();
+      const typeStr = type.toLowerCase();
+      if (docNo.includes(q)) return true;
+      if (`#${docNo}`.includes(q)) return true;
+      if (`${typeStr} ${docNo}`.includes(q)) return true;
+      if (`${typeStr} #${docNo}`.includes(q)) return true;
+      if (q.startsWith('bill') && type === 'BILL') {
+        const afterBill = q.replace(/^bill\s*#?/, '').trim();
+        if (!afterBill || docNo.includes(afterBill)) return true;
+      }
+      if (q.startsWith('quote') || q.startsWith('quotation')) {
+        const afterQuote = q.replace(/^(quotation|quote)\s*#?/, '').trim();
+        if (!afterQuote || docNo.includes(afterQuote)) return true;
+      }
+
+      // 2. Client Details (name, address, NTN)
+      const client = String(d.clientName ?? d.ClientName ?? '').toLowerCase();
+      const clientAddress = String(d.clientAddress ?? d.ClientAddress ?? '').toLowerCase();
+      const clientNTN = String(d.clientNTN ?? d.ClientNTN ?? '').toLowerCase();
+      if (client.includes(q) || clientAddress.includes(q) || clientNTN.includes(q)) return true;
+
+      // 3. Values & Currency Amounts (Grand total, GST, PST, Goods sub, Service sub)
+      const grandTotal = Number(d.grandTotal ?? d.GrandTotal ?? 0);
+      const grandStr = String(grandTotal);
+      const grandFormatted = formatCurrency(grandTotal).toLowerCase();
+      if (grandStr.includes(q) || grandFormatted.includes(q) || `rs. ${grandFormatted}`.includes(q) || `rs ${grandFormatted}`.includes(q)) {
+        return true;
+      }
+      if (cleanNum && cleanNum.length >= 2 && grandStr.includes(cleanNum)) {
+        return true;
+      }
+
+      const goodsSub = Number(d.goodsSub ?? d.GoodsSub ?? 0);
+      const gst = Number(d.gst ?? d.GST ?? 0);
+      const pst = Number(d.pst ?? d.PST ?? 0);
+      if (cleanNum && cleanNum.length >= 3) {
+        if (String(goodsSub).includes(cleanNum) || String(gst).includes(cleanNum) || String(pst).includes(cleanNum)) {
+          return true;
+        }
+      }
+
+      // 4. Reference & Firm Name
+      const ref = String(d.refText ?? d.RefText ?? '').toLowerCase();
+      const firm = String(d.firmName ?? '').toLowerCase();
+      if (ref.includes(q) || firm.includes(q)) return true;
+
+      // 5. Date & Status
+      const status = String(d.status ?? d.Status ?? 'Active').toLowerCase();
+      const dateRaw = String(d.date ?? d.Date ?? '').toLowerCase();
+      const dateDisplay = formatDateDisplay(d.date ?? d.Date).toLowerCase();
+      if (status.includes(q) || dateRaw.includes(q) || dateDisplay.includes(q)) return true;
+
+      // 6. Line Items (description, units)
+      const items = safeNormalizeItems(d.items ?? d.Items);
+      if (items.some((it) => {
+        const desc = String(it.description || '').toLowerCase();
+        const unit = String(it.unit || '').toLowerCase();
+        return desc.includes(q) || unit.includes(q);
+      })) {
+        return true;
+      }
+
+      return false;
     });
   }, [docs, searchQuery, docFilter]);
 
-  // Clients filter
+  // Comprehensive Safe Client Filtering matching Google Sheet schema
   const filteredClients = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    if (!clients || !Array.isArray(clients)) return [];
+    const q = String(searchQuery || '').toLowerCase().trim();
     if (!q) return clients;
-    return clients.filter((c) =>
-      c.name.toLowerCase().includes(q) ||
-      (c.ntn && c.ntn.toLowerCase().includes(q)) ||
-      (c.address && c.address.toLowerCase().includes(q))
-    );
+
+    return clients.filter((c: any) => {
+      if (!c) return false;
+      const name = String(c?.name || c?.Name || c?.clientName || c?.ClientName || (typeof c === 'string' ? c : '')).toLowerCase();
+      const ntn = String(c?.ntn || c?.NTN || c?.clientNTN || c?.ClientNTN || '').toLowerCase();
+      const strn = String(c?.strn || c?.STRN || '').toLowerCase();
+      const addr = String(c?.address || c?.Address || c?.clientAddress || c?.ClientAddress || '').toLowerCase();
+      return name.includes(q) || ntn.includes(q) || strn.includes(q) || addr.includes(q);
+    });
   }, [clients, searchQuery]);
 
   // KPI Analytics Computations
@@ -130,10 +223,10 @@ export const HomeScreen: React.FC<Props> = ({
     let quoteCount = 0;
 
     for (const d of docs) {
-      const isCancelled = (d.status || d.Status || '').toLowerCase() === 'cancelled';
+      const isCancelled = String(d.status || d.Status || '').toLowerCase() === 'cancelled';
       if (isCancelled) continue;
 
-      const type = d.type || d.Type || 'BILL';
+      const type = String(d.type || d.Type || 'BILL').toUpperCase();
       const grandTotal = Number(d.grandTotal ?? d.GrandTotal ?? 0);
       const gst = Number(d.gst ?? d.GST ?? 0);
       const pst = Number(d.pst ?? d.PST ?? 0);
@@ -198,8 +291,8 @@ export const HomeScreen: React.FC<Props> = ({
             {isOfflineMode ? (
               <button
                 onClick={onOpenSettings}
-                className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-400 text-slate-950 flex items-center gap-1.5 shadow-sm hover:bg-amber-300 transition"
-                title="Tap to verify Google Sheet"
+                className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-400 text-slate-950 flex items-center gap-1.5 shadow-sm hover:bg-amber-300 transition cursor-pointer"
+                title="Tap to verify Google Sheet connection"
               >
                 <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>
                 <span className="hidden md:inline">Connect Sheet</span>
@@ -232,9 +325,9 @@ export const HomeScreen: React.FC<Props> = ({
 
       {/* Main Container */}
       <main className="max-w-6xl mx-auto px-4 py-5 w-full flex-1">
-        {/* KPI Analytics Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-6">
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
+        {/* KPI Analytics Cards: Separated GST & PST display */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
               Active Entity
             </span>
@@ -246,7 +339,7 @@ export const HomeScreen: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
               Total Billed (PKR)
             </span>
@@ -258,19 +351,39 @@ export const HomeScreen: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-              Sales Tax Total
-            </span>
-            <div className="text-base sm:text-lg font-black font-mono text-blue-900 truncate mt-0.5">
-              Rs. {formatCurrency(analytics.totalGst + analytics.totalPst)}
+          {/* Separated Card: Federal GST Total */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/70 to-white border border-blue-200/80 shadow-xs hover:border-blue-300 transition">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-900 block">
+                Federal GST (18%)
+              </span>
+              <span className="w-2 h-2 rounded-full bg-blue-600"></span>
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              GST 18% &amp; PST 16%
+            <div className="text-base sm:text-lg font-black font-mono text-blue-900 truncate mt-0.5">
+              Rs. {formatCurrency(analytics.totalGst)}
+            </div>
+            <div className="text-[11px] text-blue-700/80 mt-0.5 font-medium">
+              Sales Tax on Goods
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
+          {/* Separated Card: Punjab PST Total */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/70 to-white border border-emerald-200/80 shadow-xs hover:border-emerald-300 transition">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-900 block">
+                Punjab PST (16%)
+              </span>
+              <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+            </div>
+            <div className="text-base sm:text-lg font-black font-mono text-emerald-800 truncate mt-0.5">
+              Rs. {formatCurrency(analytics.totalPst)}
+            </div>
+            <div className="text-[11px] text-emerald-700/80 mt-0.5 font-medium">
+              Sales Tax on Services
+            </div>
+          </div>
+
+          <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 transition">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
               Documents Register
             </span>
@@ -278,7 +391,7 @@ export const HomeScreen: React.FC<Props> = ({
               {analytics.billCount} Bills <span className="text-slate-400 font-normal">/</span> {analytics.quoteCount} Quotes
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              {clients.length} Registered Buyers
+              {clients.length} Saved Clients
             </div>
           </div>
         </div>
@@ -367,7 +480,7 @@ export const HomeScreen: React.FC<Props> = ({
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>Client Management ({clients.length})</span>
+                <span>Clients Directory ({clients.length})</span>
               </button>
             </div>
 
@@ -401,16 +514,38 @@ export const HomeScreen: React.FC<Props> = ({
                 </button>
               )}
 
-              {/* Search Box */}
-              <div className="relative w-44 sm:w-56">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              {/* Omnisearch Box */}
+              <div className="relative w-full sm:w-64 md:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={activeTab === 'DOCUMENTS' ? 'Search Doc / Client...' : 'Search Clients...'}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none text-slate-800"
+                  placeholder={
+                    activeTab === 'DOCUMENTS'
+                      ? 'Search Doc#, Bill#, Value, Client, Item...'
+                      : 'Search client name, NTN, STRN, address...'
+                  }
+                  className="w-full pl-9 pr-8 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#0F2544] focus:outline-none text-slate-800 placeholder:text-slate-400 transition"
                 />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      searchInputRef.current?.focus();
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <span className="hidden lg:inline-block absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded font-mono pointer-events-none">
+                    /
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -431,31 +566,28 @@ export const HomeScreen: React.FC<Props> = ({
               ) : (
                 <div className="divide-y divide-slate-100">
                   {filteredDocs.map((doc) => {
-                    const docId = doc.docId || doc.DocID || '';
-                    const docNo = doc.docNo || doc.DocNo || '—';
-                    const docType = doc.type || doc.Type || 'BILL';
+                    const docId = String(doc.docId || doc.DocID || '');
+                    const docNo = String(doc.docNo || doc.DocNo || '—');
+                    const docType = String(doc.type || doc.Type || 'BILL');
                     const date = formatDateDisplay(doc.date || doc.Date);
-                    const client = doc.clientName || doc.ClientName || 'Client';
-                    const total = doc.grandTotal ?? doc.GrandTotal ?? 0;
-                    const status = doc.status || doc.Status || 'Active';
+                    const client = String(doc.clientName || doc.ClientName || 'Client');
+                    const total = Number(doc.grandTotal ?? doc.GrandTotal ?? 0);
+                    const status = String(doc.status || doc.Status || 'Active');
                     const isCancelled = status.toLowerCase() === 'cancelled';
                     const isMenuOpen = activeMenuDocId === docId;
-                    const firmName = doc.firmName || currentFirm.name;
+                    const firmName = String(doc.firmName || currentFirm.name);
 
                     return (
                       <div
                         key={docId}
-                        className={`p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative ${
+                        className={`p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative cursor-default ${
                           isCancelled
                             ? 'bg-slate-50/80 text-slate-400 opacity-60'
-                            : 'hover:bg-slate-50/90 text-slate-900 cursor-pointer'
+                            : 'hover:bg-slate-50/70 text-slate-900'
                         }`}
                       >
-                        {/* Left Details */}
-                        <div
-                          className="flex-1 min-w-0"
-                          onClick={() => onSelectDoc(doc)}
-                        >
+                        {/* Left Details - Standard text without hover hand sign */}
+                        <div className="flex-1 min-w-0 cursor-default select-text">
                           <div className="flex flex-wrap items-center gap-2 mb-1.5">
                             <span
                               className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${
@@ -488,17 +620,14 @@ export const HomeScreen: React.FC<Props> = ({
 
                           {(doc.refText || doc.RefText) && (
                             <div className="text-xs text-slate-500 truncate mt-0.5 font-medium">
-                              {doc.refText || doc.RefText}
+                              {String(doc.refText || doc.RefText)}
                             </div>
                           )}
                         </div>
 
                         {/* Right: Grand Total & Actions */}
-                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-slate-100">
-                          <div
-                            className="text-right cursor-pointer"
-                            onClick={() => onSelectDoc(doc)}
-                          >
+                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-slate-100 cursor-default">
+                          <div className="text-right cursor-default">
                             <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">
                               Grand Total
                             </span>
@@ -507,18 +636,46 @@ export const HomeScreen: React.FC<Props> = ({
                             </span>
                           </div>
 
-                          {/* Menu button */}
-                          <div className="relative">
+                          {/* Quick Action buttons */}
+                          <div className="flex items-center gap-1.5">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setActiveMenuDocId(isMenuOpen ? null : docId);
+                                onSelectDoc(doc);
                               }}
-                              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                              aria-label="Actions"
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                              title="View & Print Document"
                             >
-                              <MoreVertical className="w-5 h-5" />
+                              <Printer className="w-3.5 h-3.5 text-slate-600" />
+                              <span>View</span>
                             </button>
+
+                            {!isCancelled && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditDoc(doc);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-[#0F2544]/10 hover:bg-[#0F2544]/20 active:bg-[#0F2544]/30 text-[#0F2544] text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                                title="Edit Document"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                                <span>Edit</span>
+                              </button>
+                            )}
+
+                            {/* Menu button */}
+                            <div className="relative">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuDocId(isMenuOpen ? null : docId);
+                                }}
+                                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                aria-label="Actions"
+                              >
+                                <MoreVertical className="w-5 h-5" />
+                              </button>
 
                             {/* Dropdown Menu */}
                             {isMenuOpen && (
@@ -530,33 +687,7 @@ export const HomeScreen: React.FC<Props> = ({
                                     setActiveMenuDocId(null);
                                   }}
                                 />
-                                <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1.5 text-xs font-semibold animate-in fade-in">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveMenuDocId(null);
-                                      onSelectDoc(doc);
-                                    }}
-                                    className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-slate-700 cursor-pointer"
-                                  >
-                                    <Printer className="w-4 h-4 text-slate-400" />
-                                    <span>Preview &amp; Print</span>
-                                  </button>
-
-                                  {!isCancelled && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveMenuDocId(null);
-                                        onEditDoc(doc);
-                                      }}
-                                      className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 text-slate-700 cursor-pointer"
-                                    >
-                                      <Edit className="w-4 h-4 text-slate-400" />
-                                      <span>Edit Document</span>
-                                    </button>
-                                  )}
-
+                                <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1.5 text-xs font-semibold animate-in fade-in">
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -592,7 +723,7 @@ export const HomeScreen: React.FC<Props> = ({
                                           onCancelDoc(docId);
                                         }
                                       }}
-                                      className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer"
+                                      className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer border-t border-slate-100"
                                     >
                                       <Ban className="w-4 h-4 text-rose-500" />
                                       <span>Cancel Document</span>
@@ -604,6 +735,7 @@ export const HomeScreen: React.FC<Props> = ({
                           </div>
                         </div>
                       </div>
+                    </div>
                     );
                   })}
                 </div>
@@ -611,66 +743,89 @@ export const HomeScreen: React.FC<Props> = ({
             </>
           )}
 
-          {/* TAB 2: CLIENT MANAGEMENT DIRECTORY */}
+          {/* TAB 2: CLIENT DIRECTORY & MANAGEMENT */}
           {activeTab === 'CLIENTS' && (
             <div className="divide-y divide-slate-100">
+              <div className="p-3 bg-blue-50/60 border-b border-blue-100 flex items-center justify-between text-xs text-blue-900 px-4">
+                <span className="font-semibold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  Clients are automatically remembered and synced from Bills and the Google Sheet Clients registry.
+                </span>
+                <span className="text-[11px] font-bold text-blue-700">
+                  {clients.length} Total Registered
+                </span>
+              </div>
+
               {filteredClients.length === 0 ? (
                 <div className="p-12 text-center text-slate-500">
                   <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                   <p className="font-bold text-slate-700">No clients registered</p>
                   <p className="text-xs text-slate-400 mt-1">
-                    Add government departments or private buyers to auto-fill them on bills.
+                    Clients are saved automatically when creating bills, or you can add them manually above.
                   </p>
                 </div>
               ) : (
-                filteredClients.map((client) => (
-                  <div
-                    key={client.id || client.name}
-                    className="p-4 hover:bg-slate-50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm sm:text-base text-slate-900">
-                          {client.name}
-                        </span>
-                        {client.ntn && (
-                          <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                            NTN: {client.ntn}
+                filteredClients.map((client: any, idx) => {
+                  const cName = String(client?.name || client?.Name || client?.clientName || client?.ClientName || (typeof client === 'string' ? client : 'Unnamed Client'));
+                  const cNtn = String(client?.ntn || client?.NTN || client?.clientNTN || client?.ClientNTN || '');
+                  const cStrn = String(client?.strn || client?.STRN || '');
+                  const cAddr = String(client?.address || client?.Address || client?.clientAddress || client?.ClientAddress || '');
+                  const cLastUsed = String(client?.lastUsed || client?.LastUsed || '');
+
+                  return (
+                    <div
+                      key={client?.id || cName + idx}
+                      className="p-4 hover:bg-slate-50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm sm:text-base text-slate-900">
+                            {cName}
                           </span>
+                          {cNtn && (
+                            <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                              NTN: {cNtn}
+                            </span>
+                          )}
+                          {cStrn && (
+                            <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              STRN: {cStrn}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1 truncate">
+                          {cAddr || 'No office address specified'}
+                        </p>
+                        {cLastUsed && (
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            Last active: {cLastUsed}
+                          </p>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {client.address || 'No address specified'}
-                      </p>
-                      {client.contactPerson && (
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Contact: {client.contactPerson} {client.phone ? `(${client.phone})` : ''}
-                        </p>
-                      )}
-                    </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-center">
-                      <button
-                        onClick={() => onEditClient(client)}
-                        className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                        <span>Edit</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Remove client ${client.name}?`)) {
-                            onDeleteClient(client.id || '', client.name);
-                          }
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                        title="Delete Client"
-                      >
-                        <Ban className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <button
+                          onClick={() => onEditClient(client)}
+                          className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Remove client ${cName}?`)) {
+                              onDeleteClient(client?.id || '', cName);
+                            }
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                          title="Delete Client"
+                        >
+                          <Ban className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}

@@ -25,6 +25,7 @@ import {
   formatCurrency,
   formatDateISO,
   generateUUID,
+  safeNormalizeItems,
 } from '../utils/formatters';
 
 interface Props {
@@ -49,7 +50,7 @@ export const EntryFormScreen: React.FC<Props> = ({
   isSaving,
 }) => {
   // Generate or reuse requestId for idempotency
-  const requestIdRef = useRef<string>(initialDoc?.requestId || generateUUID());
+  const requestIdRef = useRef<string>(initialDoc?.requestId || initialDoc?.RequestId || generateUUID());
 
   // Firm Selection (Multi-firm for MIAN FARHAN ANWAR)
   const firms = settings.firms && settings.firms.length > 0 ? settings.firms : [
@@ -82,59 +83,97 @@ export const EntryFormScreen: React.FC<Props> = ({
   // Form states
   const [docNo, setDocNo] = useState<string>(() => {
     if (initialDoc?.docNo || initialDoc?.DocNo) {
-      return initialDoc.docNo || initialDoc.DocNo || '';
+      return String(initialDoc.docNo || initialDoc.DocNo || '');
     }
     return docType === 'BILL' ? activeFirm.nextBillNo || '101' : activeFirm.nextQuoteNo || 'Q-201';
   });
 
   const [date, setDate] = useState<string>(() => {
-    return initialDoc?.date || initialDoc?.Date || formatDateISO();
+    return String(initialDoc?.date || initialDoc?.Date || formatDateISO());
   });
 
   const [validUntil, setValidUntil] = useState<string>(() => {
-    return initialDoc?.validUntil || initialDoc?.ValidUntil || addDaysISO(formatDateISO(), 7);
+    return String(initialDoc?.validUntil || initialDoc?.ValidUntil || addDaysISO(formatDateISO(), 7));
   });
 
   const [clientName, setClientName] = useState<string>(() => {
-    return initialDoc?.clientName || initialDoc?.ClientName || '';
+    return String(initialDoc?.clientName || initialDoc?.ClientName || '');
   });
 
   const [clientAddress, setClientAddress] = useState<string>(() => {
-    return initialDoc?.clientAddress || initialDoc?.ClientAddress || '';
+    return String(initialDoc?.clientAddress || initialDoc?.ClientAddress || '');
   });
 
   const [clientNTN, setClientNTN] = useState<string>(() => {
-    return initialDoc?.clientNTN || initialDoc?.ClientNTN || '';
+    return String(initialDoc?.clientNTN || initialDoc?.ClientNTN || '');
   });
 
   const [refText, setRefText] = useState<string>(() => {
-    return initialDoc?.refText || initialDoc?.RefText || '';
+    return String(initialDoc?.refText || initialDoc?.RefText || '');
   });
 
   const [formError, setFormError] = useState<string>('');
 
-  // Client suggestions dropdown state
+  // Dropdown states & Outside-click Refs
   const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [activeCatalogRowIndex, setActiveCatalogRowIndex] = useState<number | null>(null);
+  const [highlightedClientIndex, setHighlightedClientIndex] = useState<number>(0);
+  const [highlightedCatalogIndex, setHighlightedCatalogIndex] = useState<number>(0);
+
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
+  const catalogContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setHighlightedClientIndex(0);
+  }, [clientName, showClientDropdown]);
+
+  useEffect(() => {
+    setHighlightedCatalogIndex(0);
+  }, [activeCatalogRowIndex]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(event.target as Node)) {
+        setShowClientDropdown(false);
+      }
+      if (catalogContainerRef.current && !catalogContainerRef.current.contains(event.target as Node)) {
+        setActiveCatalogRowIndex(null);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  // Safe client filtering
   const filteredClients = useMemo(() => {
-    if (!clientName.trim()) return clients;
-    return clients.filter((c) =>
-      c.name.toLowerCase().includes(clientName.toLowerCase())
-    );
+    if (!clients || !Array.isArray(clients)) return [];
+    const query = String(clientName || '').toLowerCase().trim();
+
+    if (!query) {
+      return clients.slice(0, 10);
+    }
+
+    return clients.filter((c: any) => {
+      if (!c) return false;
+      const name = String(c.name || c.Name || c.clientName || c.ClientName || (typeof c === 'string' ? c : '')).toLowerCase();
+      const ntn = String(c.ntn || c.NTN || c.clientNTN || c.ClientNTN || '').toLowerCase();
+      const strn = String(c.strn || c.STRN || c.clientSTRN || c.ClientSTRN || '').toLowerCase();
+      const addr = String(c.address || c.Address || c.clientAddress || c.ClientAddress || '').toLowerCase();
+      return name.includes(query) || ntn.includes(query) || strn.includes(query) || addr.includes(query);
+    }).slice(0, 10);
   }, [clients, clientName]);
 
   // Line items state
   const [items, setItems] = useState<LineItem[]>(() => {
-    if (initialDoc?.items && initialDoc.items.length > 0) {
-      return initialDoc.items.map((it, idx) => ({
-        id: 'item-' + idx + '-' + Date.now(),
-        sr: idx + 1,
-        description: it.description || (it as any).Description || '',
-        unit: it.unit || (it as any).Unit || 'Nos',
-        qty: Number(it.qty ?? (it as any).Qty ?? 1),
-        rate: Number(it.rate ?? (it as any).Rate ?? 0),
-        tax: (it.tax ?? (it as any).Tax ?? 'GST') as TaxType,
-        amount: Number(it.amount ?? (it as any).Amount ?? ((it.qty || 1) * (it.rate || 0))),
-      }));
+    const rawItems = initialDoc?.items || (initialDoc as any)?.Items;
+    const normalized = safeNormalizeItems(rawItems);
+    if (normalized.length > 0) {
+      return normalized;
     }
     // Default 1 blank row
     return [
@@ -150,9 +189,6 @@ export const EntryFormScreen: React.FC<Props> = ({
       },
     ];
   });
-
-  // Catalog auto-suggest dropdown state per row
-  const [activeCatalogRowIndex, setActiveCatalogRowIndex] = useState<number | null>(null);
 
   // Live Totals calculation using selected firm's tax rates
   const totals = useMemo(() => {
@@ -201,7 +237,6 @@ export const EntryFormScreen: React.FC<Props> = ({
 
   const removeItemRow = (index: number) => {
     if (items.length <= 1) {
-      // Clear instead of removing last row
       setItems([
         {
           id: 'item-0-' + Date.now(),
@@ -226,12 +261,13 @@ export const EntryFormScreen: React.FC<Props> = ({
     setItems((prev) => {
       const updated = [...prev];
       const currentQty = Number(updated[index].qty) || 1;
-      const amount = Math.round(currentQty * cat.rate * 100) / 100;
+      const rate = Number(cat.rate || 0);
+      const amount = Math.round(currentQty * rate * 100) / 100;
       updated[index] = {
         ...updated[index],
-        description: cat.description,
-        unit: cat.unit || 'Nos',
-        rate: cat.rate,
+        description: String(cat.description || ''),
+        unit: String(cat.unit || 'Nos'),
+        rate: rate,
         tax: cat.tax || 'GST',
         amount,
       };
@@ -240,30 +276,34 @@ export const EntryFormScreen: React.FC<Props> = ({
     setActiveCatalogRowIndex(null);
   };
 
-  const handleSelectClient = (client: SavedClient) => {
-    setClientName(client.name);
-    setClientAddress(client.address || '');
-    setClientNTN(client.ntn || '');
+  const handleSelectClient = (c: any) => {
+    const selectedName = String(c?.name || c?.Name || c?.clientName || c?.ClientName || (typeof c === 'string' ? c : '')).trim();
+    const selectedAddress = String(c?.address || c?.Address || c?.clientAddress || c?.ClientAddress || '').trim();
+    const selectedNTN = String(c?.ntn || c?.NTN || c?.clientNTN || c?.ClientNTN || '').trim();
+
+    setClientName(selectedName);
+    if (selectedAddress) setClientAddress(selectedAddress);
+    if (selectedNTN) setClientNTN(selectedNTN);
     setShowClientDropdown(false);
     setFormError('');
   };
 
-  // Submit Handler with 100% calculation safety
+  // Submit Handler
   const handleSubmit = async (previewAfter: boolean) => {
-    if (!clientName.trim()) {
+    const trimmedClient = clientName.trim();
+    if (!trimmedClient) {
       setFormError('Client Name is required. Please type or select a client.');
       return;
     }
 
     const validItems = items.filter(
-      (i) => i.description.trim() && Number(i.qty) > 0
+      (i) => String(i.description).trim() && Number(i.qty) > 0
     );
     if (validItems.length === 0) {
       setFormError('Please add at least one line item with a description and quantity greater than 0.');
       return;
     }
 
-    // Explicit calculation of totals ensures preview & print ALWAYS has non-zero values
     const liveTotals = calculateTotals(validItems, activeFirm.gstRate || 0.18, activeFirm.pstRate || 0.16);
 
     const docPayload: any = {
@@ -279,8 +319,8 @@ export const EntryFormScreen: React.FC<Props> = ({
       Date: date,
       validUntil: docType === 'QUOTATION' ? validUntil : undefined,
       ValidUntil: docType === 'QUOTATION' ? validUntil : undefined,
-      clientName: clientName.trim(),
-      ClientName: clientName.trim(),
+      clientName: trimmedClient,
+      ClientName: trimmedClient,
       clientAddress: clientAddress.trim(),
       ClientAddress: clientAddress.trim(),
       clientNTN: clientNTN.trim(),
@@ -308,8 +348,8 @@ export const EntryFormScreen: React.FC<Props> = ({
         return {
           sr: idx + 1,
           Sr: idx + 1,
-          description: it.description.trim(),
-          Description: it.description.trim(),
+          description: String(it.description).trim(),
+          Description: String(it.description).trim(),
           unit: it.unit || 'Nos',
           Unit: it.unit || 'Nos',
           qty: q,
@@ -335,7 +375,7 @@ export const EntryFormScreen: React.FC<Props> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition"
+              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
               aria-label="Back"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -381,7 +421,7 @@ export const EntryFormScreen: React.FC<Props> = ({
               ) : (
                 <Printer className="w-4 h-4" />
               )}
-              <span>Save & Preview</span>
+              <span>Save &amp; Preview</span>
             </button>
           </div>
         </div>
@@ -396,7 +436,7 @@ export const EntryFormScreen: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setFormError('')}
-              className="text-rose-500 hover:text-rose-800 font-black px-1.5"
+              className="text-rose-500 hover:text-rose-800 font-black px-1.5 cursor-pointer"
             >
               ×
             </button>
@@ -487,7 +527,7 @@ export const EntryFormScreen: React.FC<Props> = ({
               <div className="hidden sm:block">
                 <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-blue-900">
                   <span className="font-bold block mb-0.5">Official PO Bill</span>
-                  Line items will automatically split into Goods (GST) and Services (PST).
+                  Line items split automatically into Goods (GST) and Services (PST).
                 </div>
               </div>
             )}
@@ -495,8 +535,8 @@ export const EntryFormScreen: React.FC<Props> = ({
 
           {/* Client Details Section */}
           <div className="border-t border-slate-100 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Client Name with Typeahead */}
-            <div className="sm:col-span-2 relative">
+            {/* Client Name with Typeahead (Robust Outside-Click, No Invisible Overlay) */}
+            <div ref={clientDropdownRef} className="sm:col-span-2 relative">
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
                 Client Name <span className="text-red-500">*</span>
               </label>
@@ -509,43 +549,98 @@ export const EntryFormScreen: React.FC<Props> = ({
                     setShowClientDropdown(true);
                   }}
                   onFocus={() => setShowClientDropdown(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      if (!showClientDropdown) {
+                        setShowClientDropdown(true);
+                        setHighlightedClientIndex(0);
+                      } else if (filteredClients.length > 0) {
+                        setHighlightedClientIndex((prev) => (prev + 1) % filteredClients.length);
+                      }
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      if (!showClientDropdown) {
+                        setShowClientDropdown(true);
+                        setHighlightedClientIndex(Math.max(0, filteredClients.length - 1));
+                      } else if (filteredClients.length > 0) {
+                        setHighlightedClientIndex((prev) => (prev - 1 + filteredClients.length) % filteredClients.length);
+                      }
+                    } else if (e.key === 'Enter') {
+                      if (showClientDropdown && filteredClients.length > 0) {
+                        e.preventDefault();
+                        const targetClient = filteredClients[highlightedClientIndex] || filteredClients[0];
+                        if (targetClient) {
+                          handleSelectClient(targetClient);
+                        }
+                      }
+                    } else if (e.key === 'Escape') {
+                      if (showClientDropdown) {
+                        e.preventDefault();
+                        setShowClientDropdown(false);
+                      }
+                    }
+                  }}
                   placeholder="e.g. Director General Health Services Punjab"
                   className="w-full px-3.5 py-2.5 text-base font-semibold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#1F3A5F] focus:outline-none"
                 />
-                {clients.length > 0 && (
+                {clients && clients.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setShowClientDropdown((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                    aria-label="Toggle client dropdown"
                   >
                     <ChevronDown className="w-4 h-4" />
                   </button>
                 )}
               </div>
 
-              {/* Type-ahead Dropdown */}
+              {/* Type-ahead Dropdown List with Keyboard Navigation */}
               {showClientDropdown && filteredClients.length > 0 && (
-                <>
-                  <div
-                    className="fixed inset-0 z-20"
-                    onClick={() => setShowClientDropdown(false)}
-                  />
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto divide-y divide-slate-100">
-                    {filteredClients.map((c, i) => (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-100">
+                  {filteredClients.map((c: any, i) => {
+                    const cName = String(c?.name || c?.Name || c?.clientName || c?.ClientName || (typeof c === 'string' ? c : 'Unnamed Client'));
+                    const cAddress = String(c?.address || c?.Address || c?.clientAddress || c?.ClientAddress || '');
+                    const cNtn = String(c?.ntn || c?.NTN || c?.clientNTN || c?.ClientNTN || '');
+                    const isHighlighted = highlightedClientIndex === i;
+
+                    return (
                       <button
-                        key={i}
+                        key={c?.id || i}
+                        ref={(el) => {
+                          if (isHighlighted && el) {
+                            el.scrollIntoView({ block: 'nearest' });
+                          }
+                        }}
                         type="button"
                         onClick={() => handleSelectClient(c)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition cursor-pointer"
+                        onMouseEnter={() => setHighlightedClientIndex(i)}
+                        className={`w-full text-left px-4 py-2.5 transition cursor-pointer flex items-center justify-between group ${
+                          isHighlighted
+                            ? 'bg-blue-100/90 text-[#0F2544] border-l-4 border-l-[#0F2544]'
+                            : 'hover:bg-blue-50/80 text-slate-800'
+                        }`}
                       >
-                        <div className="text-sm font-bold text-slate-800">{c.name}</div>
-                        {c.address && (
-                          <div className="text-xs text-slate-500 truncate">{c.address}</div>
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className={`text-sm font-bold truncate ${isHighlighted ? 'text-[#0F2544]' : 'text-slate-800'}`}>
+                            {cName}
+                          </div>
+                          {cAddress && (
+                            <div className="text-xs text-slate-500 truncate">{cAddress}</div>
+                          )}
+                        </div>
+                        {cNtn && (
+                          <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded shrink-0 ${
+                            isHighlighted ? 'bg-blue-200 text-blue-900' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            NTN: {cNtn}
+                          </span>
                         )}
                       </button>
-                    ))}
-                  </div>
-                </>
+                    );
+                  })}
+                </div>
               )}
             </div>
 
@@ -559,7 +654,7 @@ export const EntryFormScreen: React.FC<Props> = ({
                 value={clientNTN}
                 onChange={(e) => setClientNTN(e.target.value)}
                 placeholder="e.g. 9010203-4"
-                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#1F3A5F] focus:outline-none"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#1F3A5F] focus:outline-none font-mono"
               />
             </div>
 
@@ -594,7 +689,7 @@ export const EntryFormScreen: React.FC<Props> = ({
         </div>
 
         {/* Line Items Table Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 sm:p-6 mb-6">
+        <div ref={catalogContainerRef} className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 sm:p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900">
@@ -617,15 +712,14 @@ export const EntryFormScreen: React.FC<Props> = ({
           {/* Table Container */}
           <div className="space-y-3">
             {items.map((item, index) => {
-              const rowTax = item.tax;
               const isCatalogOpen = activeCatalogRowIndex === index;
 
-              // Filter catalog suggestions matching description
-              const matchingCatalog = catalog.filter((c) =>
-                item.description
-                  ? c.description.toLowerCase().includes(item.description.toLowerCase())
-                  : true
-              ).slice(0, 6);
+              // Filter catalog suggestions safely
+              const itemDescLower = String(item.description || '').toLowerCase();
+              const matchingCatalog = catalog.filter((c) => {
+                const catDescLower = String(c?.description || '').toLowerCase();
+                return itemDescLower ? catDescLower.includes(itemDescLower) : true;
+              }).slice(0, 6);
 
               return (
                 <div
@@ -648,52 +742,84 @@ export const EntryFormScreen: React.FC<Props> = ({
                           setActiveCatalogRowIndex(index);
                         }}
                         onFocus={() => setActiveCatalogRowIndex(index)}
+                        onKeyDown={(e) => {
+                          if (isCatalogOpen && matchingCatalog.length > 0) {
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              setHighlightedCatalogIndex((prev) => (prev + 1) % matchingCatalog.length);
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              setHighlightedCatalogIndex((prev) => (prev - 1 + matchingCatalog.length) % matchingCatalog.length);
+                            } else if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const selected = matchingCatalog[highlightedCatalogIndex] || matchingCatalog[0];
+                              if (selected) {
+                                handleSelectCatalogItem(index, selected);
+                              }
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setActiveCatalogRowIndex(null);
+                            }
+                          }
+                        }}
                         placeholder="Item description (e.g. Brake Pad Set)"
                         className="w-full px-3 py-2 text-sm font-semibold bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1F3A5F] focus:outline-none"
                       />
 
                       {/* Catalog Suggestions Dropdown */}
                       {isCatalogOpen && matchingCatalog.length > 0 && (
-                        <>
-                          <div
-                            className="fixed inset-0 z-20"
-                            onClick={() => setActiveCatalogRowIndex(null)}
-                          />
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-48 overflow-y-auto divide-y divide-slate-100">
-                            {matchingCatalog.map((cat, ci) => (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                          {matchingCatalog.map((cat, ci) => {
+                            const isHighlighted = highlightedCatalogIndex === ci;
+                            return (
                               <button
                                 key={ci}
                                 type="button"
                                 onClick={() => handleSelectCatalogItem(index, cat)}
-                                className="w-full text-left px-3 py-2 hover:bg-slate-50 transition cursor-pointer flex items-center justify-between"
+                                onMouseEnter={() => setHighlightedCatalogIndex(ci)}
+                                className={`w-full text-left px-3 py-2 transition cursor-pointer flex items-center justify-between ${
+                                  isHighlighted ? 'bg-blue-100/90 text-blue-900 border-l-4 border-l-[#0F2544]' : 'hover:bg-slate-50'
+                                }`}
                               >
                                 <div>
-                                  <div className="text-xs font-bold text-slate-800">
+                                  <div className={`text-xs font-bold ${isHighlighted ? 'text-[#0F2544]' : 'text-slate-800'}`}>
                                     {cat.description}
                                   </div>
                                   <div className="text-[11px] text-slate-500">
                                     {cat.unit} · {cat.tax === 'GST' ? 'Goods (GST)' : cat.tax === 'PST' ? 'Service (PST)' : 'No Tax'}
                                   </div>
                                 </div>
-                                <span className="text-xs font-mono font-bold text-slate-700">
+                                <span className={`text-xs font-mono font-bold ${isHighlighted ? 'text-blue-900' : 'text-slate-700'}`}>
                                   Rs. {formatCurrency(cat.rate)}
                                 </span>
                               </button>
-                            ))}
-                          </div>
-                        </>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
 
-                    {/* Row Delete Button */}
-                    <button
-                      type="button"
-                      onClick={() => removeItemRow(index)}
-                      className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition shrink-0"
-                      aria-label="Remove item"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Action Group: Delete icon & Plus icon below delete icon with corporate distinguished color */}
+                    <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => removeItemRow(index)}
+                        className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                        title="Delete this line item"
+                        aria-label="Remove item"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={addItemRow}
+                        className="p-2 rounded-lg bg-[#0F2544] hover:bg-[#1E3A8A] text-white shadow-xs hover:shadow-md active:scale-95 transition cursor-pointer"
+                        title="Add item row"
+                        aria-label="Add line item"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Second row of item: Unit, Qty, Rate, Tax, Amount */}
@@ -752,7 +878,7 @@ export const EntryFormScreen: React.FC<Props> = ({
                       <select
                         value={item.tax}
                         onChange={(e) => handleItemChange(index, 'tax', e.target.value as TaxType)}
-                        className="w-full px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none"
+                        className="w-full px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none cursor-pointer"
                       >
                         <option value="GST">Goods (GST {gstPercent}%)</option>
                         <option value="PST">Service (PST {pstPercent}%)</option>
@@ -775,67 +901,107 @@ export const EntryFormScreen: React.FC<Props> = ({
             })}
           </div>
 
-          {/* Add Item big button */}
-          <button
-            type="button"
-            onClick={addItemRow}
-            className="w-full mt-4 py-3 border-2 border-dashed border-slate-300 hover:border-[#1F3A5F] rounded-xl text-slate-600 hover:text-[#1F3A5F] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Item Row</span>
-          </button>
+          {/* Quick Add Row Action Aligned Below Column */}
+          <div className="flex justify-end pt-3">
+            <button
+              type="button"
+              onClick={addItemRow}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0F2544] hover:bg-[#1E3A8A] text-white font-bold text-xs shadow-xs hover:shadow-md transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Row</span>
+            </button>
+          </div>
         </div>
 
-        {/* Live Totals Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 mb-8">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-3">
-            Calculation Summary
-          </h3>
-
-          <div className="space-y-2 text-sm border-b border-slate-100 pb-3">
-            {/* Goods subtotal & GST (hidden if 0) */}
-            {totals.goodsSub > 0 && (
-              <>
-                <div className="flex justify-between items-center text-slate-700">
-                  <span>Sub Total (Goods):</span>
-                  <span className="font-mono font-bold">Rs. {formatCurrency(totals.goodsSub)}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-700">
-                  <span>{gstPercent}% GST on Goods:</span>
-                  <span className="font-mono font-bold">Rs. {formatCurrency(totals.gst)}</span>
-                </div>
-              </>
-            )}
-
-            {/* Service subtotal & PST (hidden if 0) */}
-            {totals.serviceSub > 0 && (
-              <>
-                <div className="flex justify-between items-center text-slate-700">
-                  <span>Sub Total (Services/Labour):</span>
-                  <span className="font-mono font-bold">Rs. {formatCurrency(totals.serviceSub)}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-700">
-                  <span>{pstPercent}% PST on Services:</span>
-                  <span className="font-mono font-bold">Rs. {formatCurrency(totals.pst)}</span>
-                </div>
-              </>
-            )}
-
-            {/* Other (no-tax) items */}
-            {totals.otherSub > 0 && (
-              <div className="flex justify-between items-center text-slate-700">
-                <span>Sub Total (Other / Non-Tax):</span>
-                <span className="font-mono font-bold">Rs. {formatCurrency(totals.otherSub)}</span>
-              </div>
-            )}
+        {/* Separated GST & PST Summary Cards Display */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-700">
+              Tax Summary &amp; Totals
+            </h3>
+            <span className="text-xs font-bold text-slate-500">
+              Separated GST &amp; PST Totals
+            </span>
           </div>
 
-          {/* Grand Total */}
-          <div className="flex justify-between items-center pt-3 text-lg sm:text-xl font-black text-slate-900">
-            <span>GRAND TOTAL:</span>
-            <span className="font-mono text-[#1F3A5F]">
-              Rs. {formatCurrency(totals.grandTotal)}
-            </span>
+          {/* Separated Tax Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-3.5">
+            {/* Card 1: Federal GST Summary (Goods) */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/70 to-indigo-50/40 border border-blue-200/80 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                  Federal GST on Goods ({gstPercent}%)
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-200/80 text-blue-900">
+                  Goods
+                </span>
+              </div>
+              <div className="space-y-1.5 text-xs pt-1 border-t border-blue-200/50">
+                <div className="flex justify-between text-slate-600">
+                  <span>Goods Subtotal:</span>
+                  <span className="font-mono font-bold text-slate-900">Rs. {formatCurrency(totals.goodsSub)}</span>
+                </div>
+                <div className="flex justify-between text-blue-950 font-bold text-sm">
+                  <span>GST Payable ({gstPercent}%):</span>
+                  <span className="font-mono text-blue-800">Rs. {formatCurrency(totals.gst)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Punjab PST Summary (Services) */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/70 to-teal-50/40 border border-emerald-200/80 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                  Punjab PST on Services ({pstPercent}%)
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900">
+                  Services
+                </span>
+              </div>
+              <div className="space-y-1.5 text-xs pt-1 border-t border-emerald-200/50">
+                <div className="flex justify-between text-slate-600">
+                  <span>Services Subtotal:</span>
+                  <span className="font-mono font-bold text-slate-900">Rs. {formatCurrency(totals.serviceSub)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-950 font-bold text-sm">
+                  <span>PST Payable ({pstPercent}%):</span>
+                  <span className="font-mono text-emerald-800">Rs. {formatCurrency(totals.pst)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Non-tax / Other subtotal if present */}
+          {totals.otherSub > 0 && (
+            <div className="p-3 mb-3.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center text-xs">
+              <span className="font-bold text-slate-600">Other Non-Taxed Items:</span>
+              <span className="font-mono font-bold text-slate-900">Rs. {formatCurrency(totals.otherSub)}</span>
+            </div>
+          )}
+
+          {/* Grand Total Executive Card */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border-2 border-slate-300 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 block">
+                Total Bill Payable
+              </span>
+              <div className="text-2xl sm:text-3xl font-black font-mono text-[#0F2544] mt-0.5">
+                Rs. {formatCurrency(totals.grandTotal)}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={addItemRow}
+                className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-slate-600" />
+                <span>Add Row</span>
+              </button>
+            </div>
           </div>
         </div>
       </main>
@@ -853,7 +1019,7 @@ export const EntryFormScreen: React.FC<Props> = ({
             type="button"
             disabled={isSaving}
             onClick={() => handleSubmit(false)}
-            className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700"
+            className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 cursor-pointer"
           >
             Save
           </button>
@@ -861,10 +1027,10 @@ export const EntryFormScreen: React.FC<Props> = ({
             type="button"
             disabled={isSaving}
             onClick={() => handleSubmit(true)}
-            className="px-4 py-2 rounded-xl bg-[#1F3A5F] text-white text-xs font-bold flex items-center gap-1.5 shadow"
+            className="px-4 py-2 rounded-xl bg-[#1F3A5F] text-white text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer"
           >
             {isSaving && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            <span>Preview & Print</span>
+            <span>Preview &amp; Print</span>
           </button>
         </div>
       </div>

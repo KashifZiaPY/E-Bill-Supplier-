@@ -1,6 +1,6 @@
 import React from 'react';
 import type { DocumentRecord, SupplierSettings } from '../../types/billing';
-import { calculateTotals, formatCurrency, formatDateDisplay } from '../../utils/formatters';
+import { calculateTotals, formatCurrency, formatDateDisplay, safeNormalizeItems } from '../../utils/formatters';
 import { numberToWordsPakistani } from '../../utils/numberToWords';
 
 interface Props {
@@ -10,10 +10,14 @@ interface Props {
 }
 
 export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead }) => {
-  const items = doc.items || doc.Items || [];
+  const items = safeNormalizeItems(doc.items || doc.Items);
   const goodsItems = items.filter((i) => i.tax === 'GST' || (i as any).Tax === 'GST');
   const serviceItems = items.filter((i) => i.tax === 'PST' || (i as any).Tax === 'PST');
   const otherItems = items.filter((i) => i.tax === 'None' || (i as any).Tax === 'None' || (!i.tax && !(i as any).Tax));
+
+  // If no tax categorization matched but items exist, show all in goods
+  const fallbackAllGoods = goodsItems.length === 0 && serviceItems.length === 0 && otherItems.length === 0 && items.length > 0;
+  const effectiveGoods = fallbackAllGoods ? items : goodsItems;
 
   const gstRate = settings.gstRate || 0.18;
   const pstRate = settings.pstRate || 0.16;
@@ -21,7 +25,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   const pstPercent = Math.round(pstRate * 100);
 
   // Dynamic live calculation fallback guarantees 100% accurate totals
-  const computed = calculateTotals(items as any, gstRate, pstRate);
+  const computed = calculateTotals(items, gstRate, pstRate);
 
   const goodsSub = (doc.goodsSub && doc.goodsSub > 0) ? doc.goodsSub : (doc.GoodsSub && doc.GoodsSub > 0) ? doc.GoodsSub : computed.goodsSub;
   const gst = (doc.gst && doc.gst > 0) ? doc.gst : (doc.GST && doc.GST > 0) ? doc.GST : computed.gst;
@@ -38,7 +42,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   const firmName = doc.firmName || settings.supplierName || 'ANWAR TRADERS';
 
   return (
-    <div className="bill-sheet font-sans text-black text-[10.5pt] leading-normal mx-auto bg-white w-full">
+    <div className="bill-sheet font-sans text-black text-[10.5pt] leading-normal mx-auto bg-white w-full print:bg-white print:text-black">
       {/* If Letterhead OFF: Show Supplier Header Block */}
       {!printOnLetterhead && (
         <div className="border-b-2 border-black pb-2 mb-3 text-center">
@@ -62,7 +66,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
         <div className="text-right text-[10pt] space-y-0.5">
           <div>
             <span className="font-bold">Bill No: </span>
-            <span className="font-bold font-mono px-2 py-0.5 bg-gray-100 border border-black rounded">
+            <span className="font-bold font-mono px-2 py-0.5 bg-white border border-black rounded">
               {doc.docNo || doc.DocNo || '—'}
             </span>
           </div>
@@ -73,8 +77,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
         </div>
       </div>
 
-      {/* Client & PO Reference Box */}
-      <div className="mb-2.5 space-y-1 text-[10pt] border border-black p-2 rounded bg-gray-50/50">
+      {/* Client & Reference Info Box (Pure white, no grey highlight) */}
+      <div className="mb-2.5 space-y-1 text-[10pt] border border-black p-2 rounded bg-white">
         <div className="flex items-start">
           <span className="font-bold w-16 shrink-0">Name:</span>
           <span className="font-semibold text-black">
@@ -96,10 +100,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
         )}
       </div>
 
-      {/* Items Table */}
-      <table className="w-full border-collapse border border-black text-[10pt] mb-2.5">
+      {/* Items Table (Pure white, crisp black borders, zero grey highlights) */}
+      <table className="w-full border-collapse border border-black text-[10pt] mb-2.5 bg-white">
         <thead>
-          <tr className="bg-gray-200 border-b border-black text-center font-bold">
+          <tr className="bg-white border-b-2 border-black text-center font-bold">
             <th className="border-r border-black py-1 px-2 w-12">Sr.#</th>
             <th className="border-r border-black py-1 px-2 text-left">Description</th>
             <th className="border-r border-black py-1 px-2 w-24">Qty</th>
@@ -109,21 +113,21 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
         </thead>
         <tbody>
           {/* SECTION A: GOODS */}
-          {goodsItems.length > 0 && (
+          {effectiveGoods.length > 0 && (
             <>
-              <tr className="bg-gray-100 border-t border-b border-black font-bold text-xs uppercase tracking-wide">
+              <tr className="bg-white border-t border-b border-black font-bold text-xs uppercase tracking-wide">
                 <td colSpan={5} className="py-1 px-2 text-black">
                   A. GOODS (General Sales Tax - GST @ {gstPercent}%)
                 </td>
               </tr>
-              {goodsItems.map((item) => {
+              {effectiveGoods.map((item) => {
                 const sr = currentSr++;
                 const qty = Number(item.qty ?? (item as any).Qty ?? 1);
                 const rate = Number(item.rate ?? (item as any).Rate ?? 0);
                 const amount = Number(item.amount ?? (item as any).Amount ?? Math.round(qty * rate * 100) / 100);
                 const unit = item.unit || (item as any).Unit || 'Nos';
                 return (
-                  <tr key={sr} className="border-b border-gray-400">
+                  <tr key={sr} className="border-b border-gray-400 bg-white">
                     <td className={`border-r border-black text-center ${pyClass} px-1.5`}>{sr}</td>
                     <td className={`border-r border-black text-left ${pyClass} px-2 font-medium`}>{item.description || (item as any).Description}</td>
                     <td className={`border-r border-black text-center ${pyClass} px-1.5 whitespace-nowrap`}>
@@ -139,7 +143,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                 );
               })}
               {/* Goods Subtotals */}
-              <tr className="border-t border-black bg-gray-50 text-[9.5pt]">
+              <tr className="border-t border-black bg-white text-[9.5pt]">
                 <td colSpan={4} className="border-r border-black text-right py-1 px-2 font-bold">
                   Sub Total (Goods):
                 </td>
@@ -147,7 +151,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   {formatCurrency(goodsSub)}
                 </td>
               </tr>
-              <tr className="border-b border-black bg-gray-50 text-[9.5pt]">
+              <tr className="border-b border-black bg-white text-[9.5pt]">
                 <td colSpan={4} className="border-r border-black text-right py-1 px-2 font-bold">
                   {gstPercent}% GST on Goods:
                 </td>
@@ -161,7 +165,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
           {/* SECTION B: SERVICES / LABOUR */}
           {serviceItems.length > 0 && (
             <>
-              <tr className="bg-gray-100 border-t border-b border-black font-bold text-xs uppercase tracking-wide">
+              <tr className="bg-white border-t border-b border-black font-bold text-xs uppercase tracking-wide">
                 <td colSpan={5} className="py-1 px-2 text-black">
                   B. SERVICES / LABOUR (Punjab Sales Tax on Services - PST @ {pstPercent}%)
                 </td>
@@ -173,7 +177,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                 const amount = Number(item.amount ?? (item as any).Amount ?? Math.round(qty * rate * 100) / 100);
                 const unit = item.unit || (item as any).Unit || 'Job';
                 return (
-                  <tr key={sr} className="border-b border-gray-400">
+                  <tr key={sr} className="border-b border-gray-400 bg-white">
                     <td className={`border-r border-black text-center ${pyClass} px-1.5`}>{sr}</td>
                     <td className={`border-r border-black text-left ${pyClass} px-2 font-medium`}>{item.description || (item as any).Description}</td>
                     <td className={`border-r border-black text-center ${pyClass} px-1.5 whitespace-nowrap`}>
@@ -189,7 +193,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                 );
               })}
               {/* Service Subtotals */}
-              <tr className="border-t border-black bg-gray-50 text-[9.5pt]">
+              <tr className="border-t border-black bg-white text-[9.5pt]">
                 <td colSpan={4} className="border-r border-black text-right py-1 px-2 font-bold">
                   Sub Total (Services):
                 </td>
@@ -197,7 +201,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   {formatCurrency(serviceSub)}
                 </td>
               </tr>
-              <tr className="border-b border-black bg-gray-50 text-[9.5pt]">
+              <tr className="border-b border-black bg-white text-[9.5pt]">
                 <td colSpan={4} className="border-r border-black text-right py-1 px-2 font-bold">
                   {pstPercent}% PST on Services:
                 </td>
@@ -211,7 +215,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
           {/* SECTION C: OTHER (Non-taxed items) */}
           {otherItems.length > 0 && (
             <>
-              <tr className="bg-gray-100 border-t border-b border-black font-bold text-xs uppercase tracking-wide">
+              <tr className="bg-white border-t border-b border-black font-bold text-xs uppercase tracking-wide">
                 <td colSpan={5} className="py-1 px-2 text-black">
                   C. OTHER
                 </td>
@@ -223,7 +227,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                 const amount = Number(item.amount ?? (item as any).Amount ?? Math.round(qty * rate * 100) / 100);
                 const unit = item.unit || (item as any).Unit || 'Nos';
                 return (
-                  <tr key={sr} className="border-b border-gray-400">
+                  <tr key={sr} className="border-b border-gray-400 bg-white">
                     <td className={`border-r border-black text-center ${pyClass} px-1.5`}>{sr}</td>
                     <td className={`border-r border-black text-left ${pyClass} px-2 font-medium`}>{item.description || (item as any).Description}</td>
                     <td className={`border-r border-black text-center ${pyClass} px-1.5 whitespace-nowrap`}>
@@ -238,7 +242,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   </tr>
                 );
               })}
-              <tr className="border-b border-black bg-gray-50 text-[9.5pt]">
+              <tr className="border-b border-black bg-white text-[9.5pt]">
                 <td colSpan={4} className="border-r border-black text-right py-1 px-2 font-bold">
                   Sub Total (Other):
                 </td>
@@ -249,8 +253,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
             </>
           )}
 
-          {/* GRAND TOTAL ROW: Shaded, thick line above, double line below */}
-          <tr className="bg-gray-200 border-t-2 border-black border-b-[3px] border-b-black text-[11pt] font-black">
+          {/* GRAND TOTAL ROW: Clean white with crisp thick top line and double bottom line */}
+          <tr className="bg-white border-t-2 border-black border-b-[3px] border-b-black text-[11pt] font-black">
             <td colSpan={4} className="border-r border-black text-right py-2 px-3 tracking-wide">
               GRAND TOTAL (PKR):
             </td>
@@ -261,8 +265,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
         </tbody>
       </table>
 
-      {/* Amount in words */}
-      <div className="border border-black p-2 mb-4 rounded bg-gray-50 text-[10pt]">
+      {/* Amount in words (Pure white box, no grey highlight) */}
+      <div className="border border-black p-2 mb-4 rounded bg-white text-[10pt]">
         <span className="font-bold">In Words: </span>
         <span className="font-semibold italic text-black">{numberToWordsPakistani(grandTotal)}</span>
       </div>

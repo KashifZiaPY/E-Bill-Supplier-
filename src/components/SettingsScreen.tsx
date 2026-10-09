@@ -37,6 +37,21 @@ export const SettingsScreen: React.FC<Props> = ({
   const [selectedFirmIndex, setSelectedFirmIndex] = useState<number>(0);
   const [isTestingMargins, setIsTestingMargins] = useState(false);
 
+  // Keyboard navigation: Escape key exits settings screen or margin tester
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isTestingMargins) {
+          setIsTestingMargins(false);
+        } else {
+          onBack();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isTestingMargins, onBack]);
+
   // Backend connection status state
   const [isCheckingBackend, setIsCheckingBackend] = useState(false);
   const [backendStatus, setBackendStatus] = useState<{

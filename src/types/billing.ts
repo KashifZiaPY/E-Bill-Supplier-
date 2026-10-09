@@ -55,6 +55,8 @@ export interface DocumentRecord {
   ClientAddress?: string;
   clientNTN?: string;
   ClientNTN?: string;
+  clientSTRN?: string;
+  ClientSTRN?: string;
   refText: string;
   RefText?: string;
   requestId?: string;
@@ -82,7 +84,6 @@ export interface SupplierSettings {
   ownerName: string; // "MIAN FARHAN ANWAR"
   activeFirmId: string;
   firms: FirmProfile[];
-  // Legacy / fallback fields mapped to active firm:
   supplierName: string;
   supplierTagline: string;
   supplierAddress: string;
@@ -98,11 +99,19 @@ export interface SupplierSettings {
   nextQuoteNo: string;
 }
 
+// Exactly matches Google Sheet 'Clients' tab columns: Name, Address, NTN, STRN, LastUsed
 export interface SavedClient {
   id?: string;
   name: string;
+  Name?: string;
   address: string;
+  Address?: string;
   ntn: string;
+  NTN?: string;
+  strn?: string;
+  STRN?: string;
+  lastUsed?: string;
+  LastUsed?: string;
   phone?: string;
   contactPerson?: string;
   totalOrders?: number;
