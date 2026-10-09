@@ -483,9 +483,6 @@ export const EntryFormScreen: React.FC<Props> = ({
       }
     }
 
-    const liveTotals = calculateTotals(items, gstRateDecimal, PST_FIXED_RATE);
-
-
     await onSave(buildDocPayload(), previewAfter);
   };
 
