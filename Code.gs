@@ -516,6 +516,37 @@ function loadDocuments(ss) {
   return docs;
 }
 
+/**
+ * Numeric part of a document number string ('Q-201' -> 201, '102' -> 102).
+ */
+function numPart(s) {
+  var n = parseInt(String(s == null ? '' : s).replace(/\D/g, ''), 10);
+  return isNaN(n) ? 0 : n;
+}
+
+/**
+ * Highest numeric document number currently stored for a firm + type.
+ * Used to keep numbering unique even when the history contains duplicates
+ * (e.g. written by an older client) or deletions.
+ */
+function getMaxDocNo(ss, firmId, docType) {
+  var sheet = ss.getSheetByName('Documents');
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var wantType = String(docType || 'BILL').toUpperCase();
+  var wantFirm = String(firmId || '').trim();
+  var max = 0;
+  for (var i = 0; i < data.length; i++) {
+    var rType = String(data[i][2] || 'BILL').toUpperCase();
+    if (rType !== wantType) continue;
+    var rFirm = String(data[i][3] || '').trim();
+    if (wantFirm && rFirm && rFirm !== wantFirm) continue;
+    var n = numPart(data[i][1]);
+    if (n > max) max = n;
+  }
+  return max;
+}
+
 function updateSequenceCounter(ss, firmId, docType, docNo, isRollback) {
   var settings = loadSettings(ss);
   if (!settings) return;
@@ -529,15 +560,29 @@ function updateSequenceCounter(ss, firmId, docType, docNo, isRollback) {
     }
   }
 
-  var nextNoToSet = docNo;
-  if (!isRollback) {
-    // Advance next number
-    var numericPart = parseInt(docNo.replace(/\D/g, ''), 10);
-    if (!isNaN(numericPart)) {
-      var prefix = docNo.replace(/[0-9]/g, '');
-      nextNoToSet = prefix + (numericPart + 1);
-    }
+  var isBill = String(docType).toUpperCase() === 'BILL';
+  // Highest stored counter (top-level and firm-level should agree; trust the higher).
+  var storedNo = isBill ? String(settings.nextBillNo || '101') : String(settings.nextQuoteNo || 'Q-201');
+  if (targetFirm) {
+    var firmNo = isBill ? String(targetFirm.nextBillNo || '') : String(targetFirm.nextQuoteNo || '');
+    if (numPart(firmNo) > numPart(storedNo)) storedNo = firmNo;
   }
+  var prefix = storedNo.replace(/[0-9]/g, '');
+  if (!prefix && !isBill) prefix = 'Q-';
+
+  // Uniqueness rule: the next number is always one past the highest of the
+  // stored counter, the saved number, and every number still in the register.
+  // A delete therefore rolls back to (highest REMAINING + 1), reusing the
+  // deleted number only when it leaves no duplicate behind.
+  var maxExisting = getMaxDocNo(ss, firmId, docType);
+  var nextNum;
+  if (isRollback) {
+    nextNum = maxExisting > 0 ? maxExisting + 1 : numPart(docNo);
+    if (!nextNum) nextNum = isBill ? 101 : 201;
+  } else {
+    nextNum = Math.max(numPart(storedNo), maxExisting, numPart(docNo)) + 1;
+  }
+  var nextNoToSet = prefix + nextNum;
 
   if (targetFirm) {
     if (docType === 'BILL') {
@@ -547,7 +592,7 @@ function updateSequenceCounter(ss, firmId, docType, docNo, isRollback) {
     }
   }
 
-  if (settings.activeFirmId === firmId || currentFirms.length === 0) {
+  if (!settings.activeFirmId || settings.activeFirmId === firmId || currentFirms.length === 0) {
     if (docType === 'BILL') {
       settings.nextBillNo = nextNoToSet;
     } else {

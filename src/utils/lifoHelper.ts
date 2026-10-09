@@ -171,3 +171,38 @@ export function calculateRolledBackNextDocNo(
     return `${prefix}${nextNum}`;
   }
 }
+
+/**
+ * Suggests the document number to USE for a new bill/quote of a firm + type.
+ * Guaranteed unique: max(the firm's running counter, highest existing number + 1).
+ *
+ * The running counter is the next-to-use number, so it is compared against
+ * (highest existing + 1) — never blindly incremented. This heals numbering
+ * even when history contains duplicates (for example from the old pre-fix
+ * client) or when a LIFO delete rolled the stored counter back onto a number
+ * that still exists.
+ */
+export function getSuggestedNextNo(
+  allDocs: DocumentRecord[] | undefined | null,
+  firmCounterNo: string | undefined | null,
+  firmId: string | undefined,
+  docType: DocType
+): string {
+  const type = String(docType).toUpperCase();
+  const isBill = type === 'BILL';
+  const stored = String(firmCounterNo || '').trim();
+  let prefix = stored.replace(/\d/g, '');
+  if (!prefix && !isBill) prefix = 'Q-';
+  const storedNum = extractDocNumber(stored);
+  let maxExisting = 0;
+  const wantFirm = String(firmId || '').trim();
+  for (const d of allDocs || []) {
+    const t = String(d.type || d.Type || 'BILL').toUpperCase();
+    if (t !== type) continue;
+    const dFirm = String(d.firmId || '').trim();
+    if (wantFirm && dFirm && dFirm !== wantFirm) continue;
+    const n = extractDocNumber(d.docNo || d.DocNo);
+    if (n > maxExisting) maxExisting = n;
+  }
+  return prefix + Math.max(storedNum, maxExisting + 1);
+}

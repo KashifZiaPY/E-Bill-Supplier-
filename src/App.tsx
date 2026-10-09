@@ -21,6 +21,7 @@ import { ClientModal } from './components/ClientModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { generateUUID, safeNormalizeItems } from './utils/formatters';
+import { getSuggestedNextNo } from './utils/lifoHelper';
 
 type Screen = 'HOME' | 'ENTRY_FORM' | 'PREVIEW' | 'SETTINGS';
 
@@ -117,16 +118,18 @@ export default function App() {
     };
     // The backend keeps the authoritative running counters at the top level of
     // settings for the ACTIVE firm (see updateSequenceCounter in Code.gs).
-    // Prefer them so a new bill/quote never prefills a stale, duplicated number.
+    // Suggest one past the highest existing number as well, so a new bill/quote
+    // can never duplicate a number already in the register (heals numbering
+    // even when history contains duplicates from the old pre-fix client).
     if (found && found.id === (settings.activeFirmId || list[0]?.id)) {
       return {
         ...found,
-        nextBillNo: settings.nextBillNo || (found as any).nextBillNo || '101',
-        nextQuoteNo: settings.nextQuoteNo || (found as any).nextQuoteNo || 'Q-201',
+        nextBillNo: getSuggestedNextNo(docs, settings.nextBillNo || (found as any).nextBillNo || '101', found.id, 'BILL'),
+        nextQuoteNo: getSuggestedNextNo(docs, settings.nextQuoteNo || (found as any).nextQuoteNo || 'Q-201', found.id, 'QUOTATION'),
       };
     }
     return found;
-  }, [settings.firms, settings.activeFirmId, settings.nextBillNo, settings.nextQuoteNo, activeFirmId]);
+  }, [settings.firms, settings.activeFirmId, settings.nextBillNo, settings.nextQuoteNo, activeFirmId, docs]);
 
   // Handle PIN verification
   const handlePinSubmit = async (pin: string) => {
@@ -472,6 +475,7 @@ export default function App() {
           settings={settings}
           clients={clients}
           catalog={catalog}
+          docs={docs}
           onBack={() => setCurrentScreen('HOME')}
           onSave={handleSaveDoc}
           isSaving={isSaving}

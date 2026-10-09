@@ -257,7 +257,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
           <div className="px-3 py-1.5 rounded-xl bg-blue-50/80 border border-blue-200 text-[11px] text-blue-950 flex items-center gap-2">
             <RotateCcw className="w-3.5 h-3.5 text-blue-700 shrink-0" />
             <span className="leading-snug">
-              <strong>LIFO Protocol:</strong> Next sequence counter rolls back to <strong>#{docNo}</strong> to maintain unbroken audit numbering.
+              <strong>LIFO Protocol:</strong> After deletion, numbering continues from the next free number (one past the highest remaining entry), so no two bills ever share a number.
             </span>
           </div>
 

@@ -28,6 +28,7 @@ import {
   generateUUID,
   safeNormalizeItems,
 } from '../utils/formatters';
+import { getSuggestedNextNo } from '../utils/lifoHelper';
 
 interface Props {
   initialDoc?: Partial<DocumentRecord> | null;
@@ -35,6 +36,7 @@ interface Props {
   settings: SupplierSettings;
   clients: SavedClient[];
   catalog: CatalogItem[];
+  docs?: DocumentRecord[];
   onBack: () => void;
   onSave: (doc: any, previewAfter: boolean) => Promise<void>;
   isSaving: boolean;
@@ -46,6 +48,7 @@ export const EntryFormScreen: React.FC<Props> = ({
   settings,
   clients,
   catalog,
+  docs,
   onBack,
   onSave,
   isSaving,
@@ -79,18 +82,21 @@ export const EntryFormScreen: React.FC<Props> = ({
 
   const activeFirm = useMemo(() => {
     const f = firms.find((f) => f.id === selectedFirmId) || firms[0];
-    // Prefer the authoritative top-level counters for the active firm (the backend
-    // keeps these current via updateSequenceCounter), so the form never prefills
-    // a stale, duplicated number.
-    if (f && f.id === settings.activeFirmId) {
+    // Numbering must never duplicate: suggest one past the highest existing
+    // number for this firm. For the active firm the backend's top-level
+    // counters are authoritative; other firms use their own stored counter.
+    if (f) {
+      const isActive = f.id === settings.activeFirmId;
+      const baseBill = (isActive ? settings.nextBillNo : undefined) || (f as any).nextBillNo || '101';
+      const baseQuote = (isActive ? settings.nextQuoteNo : undefined) || (f as any).nextQuoteNo || 'Q-201';
       return {
         ...f,
-        nextBillNo: settings.nextBillNo || (f as any).nextBillNo || '101',
-        nextQuoteNo: settings.nextQuoteNo || (f as any).nextQuoteNo || 'Q-201',
+        nextBillNo: getSuggestedNextNo(docs, baseBill, f.id, 'BILL'),
+        nextQuoteNo: getSuggestedNextNo(docs, baseQuote, f.id, 'QUOTATION'),
       };
     }
     return f;
-  }, [firms, selectedFirmId, settings.activeFirmId, settings.nextBillNo, settings.nextQuoteNo]);
+  }, [firms, selectedFirmId, docs, settings.activeFirmId, settings.nextBillNo, settings.nextQuoteNo]);
 
   // Form states
   const [docNo, setDocNo] = useState<string>(() => {
@@ -531,7 +537,13 @@ export const EntryFormScreen: React.FC<Props> = ({
                   setSelectedFirmId(e.target.value);
                   const selected = firms.find((f) => f.id === e.target.value);
                   if (selected && (!initialDoc?.docNo && !initialDoc?.DocNo)) {
-                    setDocNo(docType === 'BILL' ? selected.nextBillNo : selected.nextQuoteNo);
+                    // Same duplicate-proof suggestion as the form prefill.
+                    const isActiveSel = selected.id === settings.activeFirmId;
+                    const baseB = (isActiveSel ? settings.nextBillNo : undefined) || (selected as any).nextBillNo || '101';
+                    const baseQ = (isActiveSel ? settings.nextQuoteNo : undefined) || (selected as any).nextQuoteNo || 'Q-201';
+                    setDocNo(docType === 'BILL'
+                      ? getSuggestedNextNo(docs, baseB, selected.id, 'BILL')
+                      : getSuggestedNextNo(docs, baseQ, selected.id, 'QUOTATION'));
                   }
                 }}
                 className="px-3 py-1.5 text-xs font-bold bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1F3A5F] focus:outline-none text-slate-800 cursor-pointer"
