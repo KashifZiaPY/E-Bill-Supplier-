@@ -44,6 +44,33 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* Calm drifting clouds: a fixed, extra-wide layer of soft white wisps that
+     sways almost imperceptibly behind the app (ping-pong, ~3 minutes/cycle).
+     Screens are transparent so the sky shows through; cards stay solid. */
+  body::before {
+    content: "";
+    position: fixed;
+    top: -10%;
+    bottom: -10%;
+    left: -25%;
+    right: -25%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 34rem 9rem at 18% 22%, rgba(255, 255, 255, 0.85), transparent 70%),
+      radial-gradient(ellipse 26rem 7rem at 72% 12%, rgba(255, 255, 255, 0.7), transparent 70%),
+      radial-gradient(ellipse 30rem 8rem at 45% 58%, rgba(255, 255, 255, 0.6), transparent 70%),
+      radial-gradient(ellipse 24rem 7rem at 85% 78%, rgba(255, 255, 255, 0.65), transparent 70%),
+      radial-gradient(ellipse 28rem 8rem at 8% 85%, rgba(255, 255, 255, 0.55), transparent 70%);
+    animation: cloud-sway 170s ease-in-out infinite alternate;
+  }
+  @keyframes cloud-sway {
+    from { transform: translateX(-4%); }
+    to { transform: translateX(4%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body::before { animation: none; }
+  }
   input, select, textarea, button {
     font-family: inherit;
   }
@@ -102,11 +129,21 @@
 }
 
 @media print {
-  .no-print {
+  .no-print,
+  .clouds-layer {
+    display: none !important;
+  }
+  body::before {
     display: none !important;
   }
   table {
     border-collapse: collapse !important;
+  }
+  thead {
+    display: table-header-group !important;
+  }
+  tfoot {
+    display: table-footer-group !important;
   }
   tr {
     break-inside: avoid !important;

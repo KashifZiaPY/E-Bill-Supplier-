@@ -16,7 +16,12 @@ interface Props {
   isOpen: boolean;
   doc: DocumentRecord | null;
   onClose: () => void;
-  onConfirmDelete: (doc: DocumentRecord) => Promise<void>;
+  onConfirmDelete: (doc: DocumentRecord, authorityPin: string) => Promise<void>;
+  /** When true, the entered PIN is sent as the deletion authority PIN and verified by the server. */
+  deletePinRequired?: boolean;
+  /** 'cancel' reuses this PIN gate to void a document instead of deleting it. */
+  mode?: 'delete' | 'cancel';
+  onConfirmCancel?: (doc: DocumentRecord, authorityPin: string) => Promise<void>;
   isDeleting: boolean;
 }
 
@@ -25,9 +30,13 @@ export const LifoDeleteModal: React.FC<Props> = ({
   doc,
   onClose,
   onConfirmDelete,
+  onConfirmCancel,
   isDeleting,
+  deletePinRequired,
+  mode = 'delete',
 }) => {
   const [pin, setPin] = useState('');
+  const maxPinLen = deletePinRequired ? 8 : 4;
   const [errorMsg, setErrorMsg] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const pinInputRef = useRef<HTMLInputElement>(null);
@@ -45,7 +54,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
 
   const verifyAndProceed = async (pinToTest: string) => {
     if (pinToTest.length < 4) {
-      setErrorMsg('Please enter 4-digit Security PIN.');
+      setErrorMsg('Please enter the 4-digit PIN.');
       return;
     }
 
@@ -53,28 +62,32 @@ export const LifoDeleteModal: React.FC<Props> = ({
     setErrorMsg('');
 
     try {
-      const currentStoredPin = gasApi.getPin();
-      let isValid = false;
-
-      if (currentStoredPin && currentStoredPin === pinToTest) {
-        isValid = true;
-      } else if (!currentStoredPin && (pinToTest === '1234' || pinToTest.length >= 4)) {
-        isValid = true;
-      } else {
-        isValid = await gasApi.verifyPin(pinToTest);
+      if (deletePinRequired || mode === 'cancel') {
+        // The server verifies the authority PIN; a wrong one throws
+        // DeletePinRequiredError up through the confirm handler and we stay open.
+        if (doc) {
+          if (mode === 'cancel' && onConfirmCancel) await onConfirmCancel(doc, pinToTest);
+          else await onConfirmDelete(doc, pinToTest);
+        }
+        return;
       }
-
-      if (!isValid) {
-        setErrorMsg('Incorrect Security PIN. Deletion not authorized.');
+      // No separate deletion PIN configured: the portal (session) PIN authorizes.
+      const sessionPin = gasApi.getPin();
+      if (!sessionPin || pinToTest !== sessionPin) {
+        setErrorMsg('Incorrect PIN. Deletion not authorized.');
         setIsVerifying(false);
         return;
       }
-
       if (doc) {
-        await onConfirmDelete(doc);
+        await onConfirmDelete(doc, pinToTest);
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Security PIN authorization failed.');
+      const msg = String(err?.message || '');
+      setErrorMsg(
+        /delete authority pin/i.test(msg)
+          ? 'Wrong deletion PIN. The document was NOT deleted.'
+          : (msg || 'PIN authorization failed.')
+      );
       setIsVerifying(false);
     }
   };
@@ -104,7 +117,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
         if (pin.length >= 4) {
           verifyAndProceed(pin);
         } else {
-          setErrorMsg('Please enter 4-digit Security PIN.');
+          setErrorMsg('Please enter the 4-digit PIN.');
         }
         return;
       }
@@ -124,10 +137,10 @@ export const LifoDeleteModal: React.FC<Props> = ({
       if (digit !== null) {
         e.preventDefault();
         setPin((prev) => {
-          if (prev.length >= 4) return prev;
+          if (prev.length >= maxPinLen) return prev;
           const next = prev + digit;
           setErrorMsg('');
-          if (next.length === 4) {
+          if (!deletePinRequired && next.length === 4) {
             setTimeout(() => {
               verifyAndProceed(next);
             }, 60);
@@ -139,7 +152,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, pin, isDeleting, isVerifying, doc]);
+  }, [isOpen, onClose, pin, isDeleting, isVerifying, doc, maxPinLen, deletePinRequired]);
 
   if (!isOpen || !doc) return null;
 
@@ -151,11 +164,11 @@ export const LifoDeleteModal: React.FC<Props> = ({
   const firmName = String(doc.firmName || 'Anwar Traders');
 
   const handleKeypadPress = (digit: string) => {
-    if (pin.length < 4) {
+    if (pin.length < maxPinLen) {
       const nextPin = pin + digit;
       setPin(nextPin);
       setErrorMsg('');
-      if (nextPin.length === 4) {
+      if (!deletePinRequired && nextPin.length === 4) {
         setTimeout(() => verifyAndProceed(nextPin), 60);
       }
     }
@@ -193,10 +206,10 @@ export const LifoDeleteModal: React.FC<Props> = ({
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-[15px] font-extrabold tracking-tight">Delete Last Entry</h2>
+                <h2 className="text-[15px] font-extrabold tracking-tight">{mode === 'cancel' ? 'Cancel Document' : 'Delete Last Entry'}</h2>
                 <span className="corp-chip bg-[#b3372f]/20 text-red-200 border border-[#b3372f]/40">LIFO · PIN</span>
               </div>
-              <p className="text-[11px] text-navy-200">Permanent deletion · {docType} #{docNo}</p>
+              <p className="text-[11px] text-navy-200">{mode === 'cancel' ? 'Void (kept for audit)' : 'Permanent deletion'} · {docType} #{docNo}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 text-white/60 hover:text-white hover:bg-white/10 rounded-xl transition" title="Close">
@@ -232,12 +245,12 @@ export const LifoDeleteModal: React.FC<Props> = ({
             <div className="text-center mb-2">
               <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-ink-700 uppercase tracking-[0.1em]">
                 <Lock className="w-3 h-3 text-ink-400" />
-                <span>Enter 4-digit PIN</span>
+                <span>{deletePinRequired ? 'Enter Deletion PIN' : 'Enter 4-digit PIN'}</span>
               </div>
             </div>
 
             <div className="flex justify-center gap-2.5 mb-2.5">
-              {[0, 1, 2, 3].map((idx) => {
+              {Array.from({ length: Math.max(4, pin.length) }).map((_, idx) => {
                 const hasDigit = pin.length > idx;
                 return (
                   <div
@@ -261,10 +274,10 @@ export const LifoDeleteModal: React.FC<Props> = ({
                 autoComplete="current-password"
                 value={pin}
                 onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  const val = e.target.value.replace(/\D/g, '').slice(0, maxPinLen);
                   setPin(val);
                   setErrorMsg('');
-                  if (val.length === 4) verifyAndProceed(val);
+                  if (!deletePinRequired && val.length === 4) verifyAndProceed(val);
                 }}
                 className="opacity-0 absolute inset-0 w-full h-full cursor-default"
                 tabIndex={0}
@@ -342,7 +355,7 @@ export const LifoDeleteModal: React.FC<Props> = ({
             ) : (
               <>
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Confirm &amp; Delete</span>
+                <span>{mode === 'cancel' ? 'Confirm & Cancel' : 'Confirm & Delete'}</span>
               </>
             )}
           </button>

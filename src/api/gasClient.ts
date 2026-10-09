@@ -1,92 +1,18 @@
 // Client for communicating with the serverless /api/gas proxy or local simulated storage
+// Client for the serverless /api/gas proxy -> Google Apps Script -> Google Sheet.
+// Pure sheet sync: this client keeps NOTHING in the browser. No cached documents,
+// no stored PIN, no tombstones. Every read hits the live sheet; if the sheet is
+// unreachable the call fails loudly instead of showing stale data.
 
 import type { BootstrapData, DocumentRecord, FirmProfile, LineItem, SavedClient, SupplierSettings, DocType } from '../types/billing';
 import { calculateTotals, safeNormalizeItems } from '../utils/formatters';
 import { calculateRolledBackNextDocNo } from '../utils/lifoHelper';
 
-const STORAGE_KEY_SETTINGS = 'anwar_traders_settings_v2';
-const STORAGE_KEY_CLIENTS = 'anwar_traders_clients_v2';
-const STORAGE_KEY_DOCS = 'anwar_traders_docs_v2';
-const STORAGE_KEY_CATALOG = 'anwar_traders_catalog_v2';
-const STORAGE_KEY_OFFLINE_MODE = 'anwar_traders_offline_mode';
-const STORAGE_KEY_CACHE_TS = 'anwar_traders_cache_ts';
-const STORAGE_KEY_DELETED_DOCS = 'anwar_traders_deleted_docs_v3';
-const STORAGE_KEY_GAS_URL = 'anwar_traders_gas_url_v2';
-const STORAGE_KEY_GAS_API_KEY = 'anwar_traders_gas_api_key_v2';
-
-/**
- * Clears any old fabricated mock or seed documents from local storage so
- * the user's ledger only reflects real Google Sheet data and user entries.
- */
-export function clearFabricatedData(): void {
-  try {
-    const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-    if (storedDocs) {
-      const parsed = JSON.parse(storedDocs);
-      if (Array.isArray(parsed)) {
-        const cleaned = parsed.filter((d: any) => {
-          const id = String(d?.docId || d?.DocID || '');
-          const ref = String(d?.refText || d?.RefText || '');
-          return id !== 'doc-petty-187365' && !ref.includes('Petty-187365');
-        });
-        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(cleaned));
-        try { localStorage.setItem(STORAGE_KEY_CACHE_TS, String(Date.now())); } catch { /* ignore */ }
-      }
-    }
-    const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-    if (storedClients) {
-      const parsed = JSON.parse(storedClients);
-      if (Array.isArray(parsed)) {
-        const cleaned = parsed.filter((c: any) => {
-          const id = String(c?.id || '');
-          return id !== 'client-1' && id !== 'client-2' && id !== 'client-3';
-        });
-        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(cleaned));
-      }
-    }
-  } catch {
-    // ignore
-  }
+/** Thrown when a destructive action needs the separate deletion PIN. UI catches this to prompt. */
+export class DeletePinRequiredError extends Error {
+  constructor(msg: string) { super(msg); this.name = 'DeletePinRequiredError'; }
 }
 
-export function getDeletedDocKeys(): Set<string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_DELETED_DOCS);
-    if (!raw) return new Set();
-    const list = JSON.parse(raw);
-    return new Set(Array.isArray(list) ? list : []);
-  } catch {
-    return new Set();
-  }
-}
-
-export function recordDeletedDocKey(docId?: string, docNo?: string, docType?: string, firmId?: string) {
-  try {
-    const current = getDeletedDocKeys();
-    // Tombstone ONLY the exact document ID. Never record bare "TYPE-NO" keys:
-    // bill numbers can repeat across history, and a number-based tombstone
-    // would permanently hide innocent documents sharing that number.
-    if (docId && String(docId).trim()) {
-      current.add(String(docId).trim());
-    }
-    localStorage.setItem(STORAGE_KEY_DELETED_DOCS, JSON.stringify(Array.from(current)));
-  } catch (e) {
-    console.error('Failed to record deleted doc key:', e);
-  }
-}
-
-export function isDocDeleted(d: any): boolean {
-  if (!d) return false;
-  const deletedKeys = getDeletedDocKeys();
-  if (deletedKeys.size === 0) return false;
-
-  // Match ONLY by exact document ID. Number-based matching is unsafe because
-  // bill numbers may repeat across history.
-  const id = String(d.docId || d.DocID || '').trim();
-  if (id && deletedKeys.has(id)) return true;
-
-  return false;
-}
 
 export const DEFAULT_FIRMS: FirmProfile[] = [
   {
@@ -446,7 +372,6 @@ export function normalizeDocsList(rawDocs: any): DocumentRecord[] {
   }
 
   return rawDocs
-    .filter((d: any) => !isDocDeleted(d))
     .filter((d: any) => {
       // Permanently filter out any legacy fabricated petty doc
       const docId = String(d?.docId || d?.DocID || '');
@@ -524,549 +449,169 @@ export function normalizeDocsList(rawDocs: any): DocumentRecord[] {
 }
 
 class GasClient {
+  // Session-only credentials. Nothing here is ever written to browser storage:
+  // refresh the page and the PIN must be entered again.
   private pin: string = '';
+  private deletePin: string = '';
   private gasUrl: string = '';
   private gasApiKey: string = '';
-  private isOfflineMode: boolean = false;
-  private offlineReason: string = '';
 
-  constructor() {
-    this.pin = localStorage.getItem('anwar_traders_pin') || '';
-    this.gasUrl = localStorage.getItem(STORAGE_KEY_GAS_URL) || '';
-    this.gasApiKey = localStorage.getItem(STORAGE_KEY_GAS_API_KEY) || '';
-    this.isOfflineMode = localStorage.getItem(STORAGE_KEY_OFFLINE_MODE) === 'true';
-    clearFabricatedData();
-  }
+  constructor() {}
 
   getGasUrl(): string {
-    // Priority: in-memory > this browser's saved URL > build-time Vercel env (VITE_GAS_URL).
+    // Priority: in-memory > build-time Vercel env (VITE_GAS_URL).
     // The Vercel env fallback means the sheet connects on every device/browser with zero manual setup.
     const envUrl = (import.meta as any)?.env?.VITE_GAS_URL || '';
-    return this.gasUrl || localStorage.getItem(STORAGE_KEY_GAS_URL) || envUrl || '';
-  }
-
-  /** When the local document cache was last written (ms epoch). Used to label offline data honestly. */
-  private touchCacheTs(): void {
-    try { localStorage.setItem(STORAGE_KEY_CACHE_TS, String(Date.now())); } catch { /* ignore */ }
-  }
-
-  getCacheTimestamp(): number | null {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_CACHE_TS);
-      const n = raw ? Number(raw) : NaN;
-      return Number.isFinite(n) && n > 0 ? n : null;
-    } catch { return null; }
+    return this.gasUrl || envUrl || '';
   }
 
   setGasUrl(url: string) {
-    this.gasUrl = url.trim();
-    localStorage.setItem(STORAGE_KEY_GAS_URL, this.gasUrl);
+    this.gasUrl = (url || '').trim();
   }
 
   getGasApiKey(): string {
-    return this.gasApiKey || localStorage.getItem(STORAGE_KEY_GAS_API_KEY) || '';
+    return this.gasApiKey || '';
   }
 
   setGasApiKey(key: string) {
-    this.gasApiKey = key.trim();
-    localStorage.setItem(STORAGE_KEY_GAS_API_KEY, this.gasApiKey);
+    this.gasApiKey = (key || '').trim();
   }
 
   async saveGasConfig(url: string, key?: string): Promise<{ ok: boolean; message: string }> {
-    this.setGasUrl(url);
-    if (key !== undefined) this.setGasApiKey(key);
-
     try {
-      const res = await fetch('/api/gas', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-app-pin': this.getPin(),
-          'x-gas-url': this.getGasUrl(),
-          'x-gas-api-key': this.getGasApiKey(),
-        },
-        body: JSON.stringify({
-          action: 'saveGasConfig',
-          payload: { gasUrl: this.getGasUrl(), gasApiKey: this.getGasApiKey() },
-        }),
-      });
-      const data = await res.json();
-      return data;
+      this.setGasUrl(url || '');
+      if (typeof key === 'string') this.setGasApiKey(key);
+      // Persist server-side (proxy writes .gas_config.json); nothing stays in this browser.
+      await this.callGas('saveGasConfig', { gasUrl: this.gasUrl, gasApiKey: this.gasApiKey });
+      return { ok: true, message: 'Configuration saved on the server.' };
     } catch {
-      return { ok: true, message: 'Configuration saved locally.' };
+      return { ok: true, message: 'Configuration saved for this session.' };
     }
   }
 
-  wipeLocalCache(): void {
-    localStorage.removeItem(STORAGE_KEY_DOCS);
-    localStorage.removeItem(STORAGE_KEY_CLIENTS);
-    localStorage.removeItem(STORAGE_KEY_CATALOG);
-    localStorage.removeItem(STORAGE_KEY_DELETED_DOCS);
-  }
-
+  /** Portal PIN — kept in memory only. A page refresh wipes it, so the PIN screen returns. */
   setPin(pin: string) {
-    this.pin = pin;
-    localStorage.setItem('anwar_traders_pin', pin);
+    this.pin = pin || '';
   }
 
   getPin(): string {
-    return this.pin || localStorage.getItem('anwar_traders_pin') || '';
+    return this.pin || '';
   }
 
   clearPin() {
     this.pin = '';
-    localStorage.removeItem('anwar_traders_pin');
+    this.deletePin = '';
   }
 
-  setIsOfflineMode(offline: boolean) {
-    this.isOfflineMode = offline;
-    localStorage.setItem(STORAGE_KEY_OFFLINE_MODE, String(offline));
+  /** Deletion authority PIN — in memory only, never stored. Sent as x-delete-pin. */
+  setDeletePin(pin: string) {
+    this.deletePin = pin || '';
   }
 
-  getIsOfflineMode(): boolean {
-    return this.isOfflineMode;
-  }
-
-  /** Human-readable reason the app fell back to offline/cached mode (empty when online). */
-  getOfflineReason(): string {
-    return this.offlineReason || '';
+  getDeletePin(): string {
+    return this.deletePin || '';
   }
 
   /**
-   * Single choke point for entering offline mode. Cached data is never again
-   * presented as live: every fallback path records WHY it fell back.
+   * Back-compat stub: offline/cache mode no longer exists (pure sheet sync).
+   * Always online; failures throw instead of falling back to stale data.
    */
-  private enterOfflineMode(reason: string): void {
-    this.offlineReason = reason || 'The Google Sheet could not be reached.';
-    this.setIsOfflineMode(true);
-  }
-
-  /** True when a failed backend call looks like connectivity/config trouble rather than a business-rule rejection. */
-  private isConnectivityError(err: any): boolean {
-    const msg = String(err?.message || err || '');
-    return /not configured|failed to fetch|network|load failed|timeout|econn|enotfound|socket|offline/i.test(msg);
-  }
+  private enterOfflineMode(_reason: string): void {}
 
   /**
-   * Honest mutation wrapper. Connectivity trouble -> enter offline mode and throw
-   * a clear message (never a fake local success). A backend business-rule
-   * rejection (duplicate, validation, LIFO violation) -> thrown as-is.
+   * Mutation wrapper. Pure sheet sync: the call either succeeds against the
+   * live sheet or throws. Nothing is ever faked locally.
    */
-  private async mutateOrThrow(action: string, payload: any, offlineMsg: string): Promise<any> {
-    try {
-      return await this.callGas(action, payload);
-    } catch (err: any) {
-      if (this.isConnectivityError(err)) {
-        this.enterOfflineMode(String(err?.message || 'Could not reach the Google Sheet.'));
-        throw new Error(offlineMsg);
-      }
-      throw err;
-    }
+  private async mutateOrThrow(action: string, payload: any): Promise<any> {
+    return this.callGas(action, payload);
   }
 
   private async callGas(action: string, payload: any = {}): Promise<any> {
     const pin = this.getPin();
     const gasUrl = this.getGasUrl();
     const gasApiKey = this.getGasApiKey();
+    const deletePin = this.getDeletePin();
 
-    const response = await fetch('/api/gas', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-app-pin': pin,
-        'x-gas-url': gasUrl,
-        'x-gas-api-key': gasApiKey,
-      },
-      body: JSON.stringify({ action, payload, gasUrl, gasApiKey }),
-    });
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-app-pin': pin,
+      'x-gas-url': gasUrl,
+      'x-gas-api-key': gasApiKey,
+    };
+    if (deletePin) headers['x-delete-pin'] = deletePin;
 
-    if (response.status === 401) {
-      throw new Error('Incorrect PIN. Please re-enter your 4-digit PIN.');
+    let response: Response;
+    try {
+      response = await fetch('/api/gas', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action, payload, gasUrl, gasApiKey }),
+      });
+    } catch (err: any) {
+      throw new Error('Could not reach the billing server. Check your internet connection and retry.');
     }
 
-    let data: any;
+    let data: any = null;
     const responseText = await response.text();
     try {
       data = JSON.parse(responseText);
     } catch {
+      // non-JSON (proxy already guards HTML); fall through to status handling
+    }
+
+    if (response.status === 401) {
+      if (data && (data as any).deletePinRequired) {
+        throw new DeletePinRequiredError('Delete authority PIN required. Enter the deletion PIN to continue.');
+      }
+      throw new Error('Incorrect PIN. Please re-enter your 4-digit PIN.');
+    }
+
+    if (data && (data as any).notConfigured) {
       throw new Error(
-        `Server returned non-JSON response (${response.status}): ${responseText.substring(0, 150)}`
+        'Google Apps Script Web App URL is not configured. Set GAS_URL in Vercel or paste your Apps Script URL in Settings > Google Sheets Connection.'
       );
     }
 
-    if (data && data.notConfigured) {
-      if (action === 'bootstrap') {
-        this.enterOfflineMode('Google Sheet URL is not configured for this browser. Paste your Apps Script Web App URL in Settings → Google Sheets Sync, or set VITE_GAS_URL in Vercel.');
-        return this.localCall(action, payload);
-      }
-      throw new Error(
-        'Google Apps Script Web App URL is not configured. Please paste your Apps Script URL in Settings > Google Sheets Connection.'
-      );
-    }
-
-    if (!response.ok || data.ok === false) {
-      const errMsg = data.error || `Google Apps Script returned an error (HTTP ${response.status})`;
-      if (action === 'bootstrap') {
-        console.warn('Bootstrap API error, using local cache:', errMsg);
-        this.enterOfflineMode(errMsg);
-        return this.localCall(action, payload);
-      }
+    if (!response.ok || (data && data.ok === false)) {
+      const errMsg = (data && data.error) || `Google Apps Script returned an error (HTTP ${response.status})`;
       throw new Error(errMsg);
     }
 
-    this.setIsOfflineMode(false);
-    this.offlineReason = '';
-    return data.data || data;
+    return (data && (data.data || data)) || data;
   }
 
   // --- Local Storage Sync & Simulation ---
-  private localCall(action: string, payload: any): any {
-    switch (action) {
-      case 'bootstrap': {
-        const storedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
-        const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-        const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const storedCatalog = localStorage.getItem(STORAGE_KEY_CATALOG);
-
-        let settings: SupplierSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS;
-        if (!settings.firms || settings.firms.length === 0) {
-          settings.firms = DEFAULT_FIRMS;
-          settings.ownerName = settings.ownerName || 'MIAN FARHAN ANWAR';
-          settings.activeFirmId = settings.activeFirmId || DEFAULT_FIRMS[0].id;
-        }
-
-        const rawDocs = storedDocs ? JSON.parse(storedDocs) : [];
-        const docs = normalizeDocsList(rawDocs);
-
-        const rawClients = storedClients ? JSON.parse(storedClients) : [];
-        const clients = normalizeClientsList(rawClients, docs);
-
-        const catalog = storedCatalog ? JSON.parse(storedCatalog) : [];
-
-        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
-        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
-        this.touchCacheTs();
-        localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(catalog));
-
-        return { settings, clients, docs, catalog };
-      }
-
-      case 'getDoc': {
-        const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : []);
-        const targetId = String(payload?.docId || '');
-        const found = docs.find((d) => String(d.docId || d.DocID || '') === targetId);
-        if (found) {
-          return { doc: found, items: safeNormalizeItems(found.items || found.Items) };
-        }
-        return {
-          doc: { docId: targetId, type: 'BILL', docNo: '', date: '', clientName: '', refText: '', items: [] } as any,
-          items: [],
-        };
-      }
-
-      case 'saveDoc': {
-        const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : []);
-
-        const storedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
-        const settings: SupplierSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS;
-
-        const docToSave = payload.doc;
-        const isNew = !docToSave.docId && !docToSave.DocID;
-        const docId = docToSave.docId || docToSave.DocID || 'doc-' + Date.now();
-
-        const activeFirm = (settings.firms || []).find((f) => f.id === docToSave.firmId) || settings.firms?.[0] || DEFAULT_FIRMS[0];
-
-        let docNo = docToSave.docNo || docToSave.DocNo;
-        if (!docNo) {
-          if (docToSave.type === 'BILL') {
-            docNo = activeFirm.nextBillNo;
-            const next = String(Number(activeFirm.nextBillNo || '100') + 1);
-            activeFirm.nextBillNo = next;
-            settings.nextBillNo = next;
-          } else {
-            docNo = activeFirm.nextQuoteNo;
-            const numPart = activeFirm.nextQuoteNo.replace(/\D/g, '') || '200';
-            const prefix = activeFirm.nextQuoteNo.replace(/\d/g, '') || 'Q-';
-            const next = `${prefix}${Number(numPart) + 1}`;
-            activeFirm.nextQuoteNo = next;
-            settings.nextQuoteNo = next;
-          }
-          localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-        }
-
-        const gstRateToUse = (docToSave.gstRate !== undefined && docToSave.gstRate !== null && !isNaN(Number(docToSave.gstRate)))
-          ? Number(docToSave.gstRate)
-          : ((docToSave as any).GstRate !== undefined && !isNaN(Number((docToSave as any).GstRate)))
-          ? Number((docToSave as any).GstRate)
-          : (activeFirm.gstRate || 0.18);
-
-        const totals = calculateTotals(docToSave.items || docToSave.Items || [], gstRateToUse, 0.16);
-
-        const fullRecord: DocumentRecord = {
-          ...docToSave,
-          docId,
-          DocID: docId,
-          docNo,
-          DocNo: docNo,
-          firmId: activeFirm.id,
-          firmName: activeFirm.name,
-          Type: docToSave.type,
-          Date: docToSave.date,
-          ClientName: docToSave.clientName,
-          ClientAddress: docToSave.clientAddress,
-          ClientNTN: docToSave.clientNTN,
-          RefText: docToSave.refText,
-          GoodsSub: totals.goodsSub,
-          goodsSub: totals.goodsSub,
-          GST: totals.gst,
-          gst: totals.gst,
-          gstRate: gstRateToUse,
-          GstRate: gstRateToUse,
-          gstBreakdown: totals.gstBreakdown,
-          GstBreakdown: totals.gstBreakdown,
-          ServiceSub: totals.serviceSub,
-          serviceSub: totals.serviceSub,
-          PST: totals.pst,
-          pst: totals.pst,
-          OtherSub: totals.otherSub,
-          otherSub: totals.otherSub,
-          GrandTotal: totals.grandTotal,
-          grandTotal: totals.grandTotal,
-          Status: 'Active',
-          status: 'Active',
-        };
-
-        if (isNew) {
-          docs.unshift(fullRecord);
-        } else {
-          const idx = docs.findIndex((d) => (d.docId || d.DocID) === docId);
-          if (idx >= 0) {
-            docs[idx] = fullRecord;
-          } else {
-            docs.unshift(fullRecord);
-          }
-        }
-        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
-        this.touchCacheTs();
-
-        // Auto-save Client locally as well
-        if (docToSave.clientName) {
-          const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-          const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : SEED_CLIENTS, docs);
-          const cNameLower = String(docToSave.clientName).toLowerCase().trim();
-          const existing = clients.find((c) => c.name.toLowerCase().trim() === cNameLower);
-          if (!existing) {
-            clients.unshift({
-              id: 'client-' + Date.now(),
-              name: String(docToSave.clientName).trim(),
-              Name: String(docToSave.clientName).trim(),
-              address: String(docToSave.clientAddress || '').trim(),
-              Address: String(docToSave.clientAddress || '').trim(),
-              ntn: String(docToSave.clientNTN || '').trim(),
-              NTN: String(docToSave.clientNTN || '').trim(),
-              lastUsed: String(docToSave.date || '').trim(),
-              LastUsed: String(docToSave.date || '').trim(),
-              totalOrders: 1,
-              totalBilled: totals.grandTotal,
-            });
-          } else {
-            existing.address = String(docToSave.clientAddress || existing.address).trim();
-            existing.Address = existing.address;
-            existing.ntn = String(docToSave.clientNTN || existing.ntn).trim();
-            existing.NTN = existing.ntn;
-            existing.lastUsed = String(docToSave.date || existing.lastUsed).trim();
-            existing.LastUsed = existing.lastUsed;
-            existing.totalOrders = (existing.totalOrders || 0) + 1;
-            existing.totalBilled = (existing.totalBilled || 0) + totals.grandTotal;
-          }
-          localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
-        }
-
-        // Auto-save Catalog
-        const rowItems = docToSave.items || docToSave.Items || [];
-        if (rowItems.length > 0) {
-          const storedCatalog = localStorage.getItem(STORAGE_KEY_CATALOG);
-          const catalog = storedCatalog ? JSON.parse(storedCatalog) : [];
-          for (const item of rowItems) {
-            const desc = String(item.description || item.Description || '').trim();
-            if (desc && !catalog.find((c: any) => c.description.toLowerCase() === desc.toLowerCase())) {
-              catalog.push({
-                description: desc,
-                unit: item.unit || item.Unit || 'Nos',
-                rate: Number(item.rate ?? item.Rate ?? 0),
-                tax: item.tax || item.Tax || 'GST',
-              });
-            }
-          }
-          localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(catalog));
-        }
-
-        return { ok: true, docId, docNo };
-      }
-
-      case 'cancelDoc': {
-        const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : []);
-        const doc = docs.find((d) => (d.docId || d.DocID) === payload.docId);
-        if (doc) {
-          doc.status = 'Cancelled';
-          doc.Status = 'Cancelled';
-          localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
-          this.touchCacheTs();
-        }
-        return { ok: true };
-      }
-
-      case 'saveSettings': {
-        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(payload.settings));
-        return { ok: true };
-      }
-
-      case 'saveClient': {
-        const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-        const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : []);
-        const norm = normalizeSingleClient(payload.client) || payload.client;
-        const normNameLower = norm.name.toLowerCase().trim();
-        const idx = clients.findIndex((c) => c.id === norm.id || c.name.toLowerCase().trim() === normNameLower);
-        if (idx >= 0) {
-          clients[idx] = { ...clients[idx], ...norm };
-        } else {
-          clients.unshift(norm);
-        }
-        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
-        return { ok: true, client: norm };
-      }
-
-      case 'deleteClient': {
-        const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-        const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : []);
-        const targetId = payload.clientId;
-        const targetNameLower = String(payload.clientName || '').toLowerCase().trim();
-        const filtered = clients.filter(
-          (c) => c.id !== targetId && (!targetNameLower || c.name.toLowerCase().trim() !== targetNameLower)
-        );
-        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(filtered));
-        return { ok: true };
-      }
-
-      case 'deleteDoc': {
-        const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : []);
-        const targetId = String(payload.docId || '').trim();
-        const targetNo = String(payload.docNo || '').trim();
-        const docType = String(payload.docType || 'BILL').toUpperCase() as DocType;
-        const firmId = payload.firmId ? String(payload.firmId).trim() : undefined;
-
-        // Record persistent tombstone so this document is permanently purged
-        recordDeletedDocKey(targetId, targetNo, docType, firmId);
-
-        // Remove ONLY the exact document by ID. Never filter by document number:
-        // numbers can repeat across history and must not cause collateral removal.
-        const filtered = docs.filter((d) => {
-          const dId = String(d.docId || d.DocID || '').trim();
-          if (targetId && dId) return dId !== targetId;
-          return true;
-        });
-        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(filtered));
-        this.touchCacheTs();
-
-        // Automatic LIFO Sequence rollback: Revert nextBillNo or nextQuoteNo if applicable
-        let updatedSettings: SupplierSettings | undefined;
-        let rolledBack = '';
-        const storedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
-        if (storedSettings) {
-          try {
-            const settings: SupplierSettings = JSON.parse(storedSettings);
-            const activeFirm = (settings.firms || []).find((f) => f.id === firmId) || settings.firms?.[0];
-            if (activeFirm) {
-              const currentNext = docType === 'BILL' ? (activeFirm.nextBillNo || '101') : (activeFirm.nextQuoteNo || 'Q-201');
-              rolledBack = calculateRolledBackNextDocNo(filtered, docType, activeFirm.id, currentNext);
-              if (docType === 'BILL') {
-                activeFirm.nextBillNo = rolledBack;
-                if (settings.activeFirmId === activeFirm.id) settings.nextBillNo = rolledBack;
-              } else {
-                activeFirm.nextQuoteNo = rolledBack;
-                if (settings.activeFirmId === activeFirm.id) settings.nextQuoteNo = rolledBack;
-              }
-              localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-              updatedSettings = settings;
-            }
-          } catch (e) {
-            console.error('Error rolling back sequence counter on deleteDoc:', e);
-          }
-        }
-
-        return {
-          ok: true,
-          deletedDocId: targetId,
-          remainingDocs: filtered,
-          settings: updatedSettings,
-          rolledBackNextNo: rolledBack,
-        };
-      }
-
-      default:
-        throw new Error(`Unknown action: ${action}`);
+  async bootstrap(): Promise<BootstrapData & { drafts?: DocumentRecord[] }> {
+    const res = await this.callGas('bootstrap', {});
+    if (!res) throw new Error('Empty response from the billing server.');
+    const rawSettings = res.settings;
+    let settings: SupplierSettings = rawSettings || DEFAULT_SETTINGS;
+    if (!settings.firms || settings.firms.length === 0) {
+      settings.firms = DEFAULT_FIRMS;
+      settings.ownerName = settings.ownerName || 'MIAN FARHAN ANWAR';
+      settings.activeFirmId = settings.activeFirmId || DEFAULT_FIRMS[0].id;
     }
-  }
 
-  // --- Public API methods ---
+    const rawDocs = res.docs || [];
+    const docs = normalizeDocsList(rawDocs);
 
-  async bootstrap(): Promise<BootstrapData> {
-    try {
-      const res = await this.callGas('bootstrap', {});
-      if (res) {
-        const rawSettings = res.settings;
-        let settings: SupplierSettings = rawSettings || DEFAULT_SETTINGS;
-        if (!settings.firms || settings.firms.length === 0) {
-          settings.firms = DEFAULT_FIRMS;
-          settings.ownerName = settings.ownerName || 'MIAN FARHAN ANWAR';
-          settings.activeFirmId = settings.activeFirmId || DEFAULT_FIRMS[0].id;
-        }
+    const rawDrafts = res.drafts || [];
+    const drafts = normalizeDocsList(rawDrafts);
 
-        const rawDocs = res.docs || [];
-        const docs = normalizeDocsList(rawDocs);
+    const rawClients = res.clients || [];
+    const clients = normalizeClientsList(rawClients, docs);
 
-        const rawClients = res.clients || [];
-        const clients = normalizeClientsList(rawClients, docs);
+    const catalog = Array.isArray(res.catalog) ? res.catalog : [];
 
-        const catalog = Array.isArray(res.catalog) ? res.catalog : [];
-
-        // Sync local storage cache
-        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
-        this.touchCacheTs();
-        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
-        localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(catalog));
-
-        return { settings, clients, docs, catalog };
-      }
-      return this.localCall('bootstrap', {});
-    } catch (err: any) {
-      const msg = String(err?.message || '');
-      if (/incorrect pin/i.test(msg)) throw err; // wrong PIN -> App forces re-login, never stale data
-      console.warn('Bootstrap failed, falling back to local cache:', err);
-      this.enterOfflineMode(msg || 'Could not reach the Google Sheet backend.');
-      return this.localCall('bootstrap', {});
-    }
+    return { settings, clients, docs, catalog, drafts };
   }
 
   async getDoc(docId: string): Promise<{ doc: DocumentRecord; items: LineItem[] }> {
-    try {
-      const res = await this.callGas('getDoc', { docId });
-      if (res && typeof res === 'object') {
-        const rawItems = res.items || res.Items || res.data?.items || res.doc?.items || res.doc?.Items || [];
-        const normItems = safeNormalizeItems(rawItems);
-        const docObj = res.doc || res.data?.doc || res;
-        return { doc: { ...docObj, items: normItems }, items: normItems };
-      }
-      return this.localCall('getDoc', { docId });
-    } catch {
-      return this.localCall('getDoc', { docId });
-    }
+    const res = await this.callGas('getDoc', { docId });
+    const rawItems = res.items || res.Items || res.data?.items || res.doc?.items || res.doc?.Items || [];
+    const normItems = safeNormalizeItems(rawItems);
+    const docObj = res.doc || res.data?.doc || res;
+    return { doc: { ...docObj, items: normItems }, items: normItems };
   }
 
   async saveDoc(doc: any): Promise<{ ok: boolean; docId: string; docNo: string; docNoCorrected?: boolean }> {
@@ -1155,63 +700,75 @@ class GasClient {
 
     // Backend contract (Code.gs handleSaveDoc) reads payload.docData.
     // Sending any other key silently produces a blank record, so keep this exact.
-    const backendResult: any = await this.mutateOrThrow(
-      'saveDoc',
-      { docData: normalizedDoc },
-      "You're offline \u2014 the document was NOT saved to your Google Sheet. Reconnect and try again."
-    );
-
-    // Always update local cache on successful save
-    this.localCall('saveDoc', {
-      doc: {
-        ...normalizedDoc,
-        docId: backendResult?.docId || normalizedDoc.docId,
-        docNo: backendResult?.docNo || normalizedDoc.docNo,
-      },
-    });
-
+    const backendResult: any = await this.mutateOrThrow('saveDoc', { docData: normalizedDoc });
     return backendResult;
   }
 
+  /**
+   * Autosaves the in-progress bill/quotation as a server-side draft (status='Draft').
+   * Drafts hold no number and never touch counters; the draft row becomes the
+   * real document when finally saved (same docId).
+   */
+  async saveDraft(doc: any): Promise<{ ok: boolean; docId: string }> {
+    const draft = { ...(doc || {}), status: 'Draft', Status: 'Draft', docNo: '', DocNo: '' };
+    const res: any = await this.mutateOrThrow('saveDoc', { docData: draft });
+    return { ok: true, docId: res?.docId || draft.docId || draft.DocID || '' };
+  }
+
+  /**
+   * Best-effort draft save that survives page refresh/close: a keepalive POST
+   * can't be cancelled by the unloading page. Used by the pagehide handler.
+   */
+  async flushDraft(doc: any): Promise<void> {
+    try {
+      const pin = this.getPin();
+      if (!pin) return;
+      const draft = { ...(doc || {}), status: 'Draft', Status: 'Draft', docNo: '', DocNo: '' };
+      await fetch('/api/gas', {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json', 'x-app-pin': pin },
+        body: JSON.stringify({ action: 'saveDoc', payload: { docData: draft } }),
+      });
+    } catch {
+      /* best effort only */
+    }
+  }
+
+  /** Permanently discards an unfinished draft (no counter impact). */
+  async discardDraft(docId: string): Promise<{ ok: boolean }> {
+    await this.mutateOrThrow('discardDraft', { docId });
+    return { ok: true };
+  }
+
   async cancelDoc(docId: string): Promise<{ ok: boolean }> {
-    await this.mutateOrThrow(
-      'cancelDoc',
-      { docId },
-      "You're offline \u2014 the document was NOT cancelled. Reconnect and try again."
-    );
-    return this.localCall('cancelDoc', { docId });
+    await this.mutateOrThrow('cancelDoc', { docId });
+    return { ok: true };
   }
 
   async saveSettings(settings: SupplierSettings): Promise<{ ok: boolean }> {
-    await this.mutateOrThrow(
-      'saveSettings',
-      { settings },
-      "You're offline \u2014 settings were NOT saved. Reconnect and try again."
-    );
-    return this.localCall('saveSettings', { settings });
+    await this.mutateOrThrow('saveSettings', { settings });
+    return { ok: true };
   }
 
   async saveClient(client: SavedClient): Promise<{ ok: boolean; client?: SavedClient }> {
     const norm = normalizeSingleClient(client) || client;
-    await this.mutateOrThrow(
-      'saveClient',
-      { client: norm },
-      "You're offline \u2014 the client was NOT saved. Reconnect and try again."
-    );
-    return this.localCall('saveClient', { client: norm });
+    const res: any = await this.mutateOrThrow('saveClient', { client: norm });
+    return { ok: true, client: res?.client };
   }
 
   async deleteClient(clientId: string, clientName?: string): Promise<{ ok: boolean }> {
-    await this.mutateOrThrow(
-      'deleteClient',
-      { clientId, clientName },
-      "You're offline \u2014 the client was NOT deleted. Reconnect and try again."
-    );
-    return this.localCall('deleteClient', { clientId, clientName });
+    await this.mutateOrThrow('deleteClient', { clientId, clientName });
+    return { ok: true };
   }
 
   /**
    * Permanently deletes a document (LIFO rule) and rolls back sequence number.
+   */
+  /**
+   * Permanently deletes a document (LIFO rule) and rolls back sequence number.
+   * The authority PIN is sent as x-delete-pin when provided; the server enforces
+   * it only when DELETE_PIN is configured.
    */
   async deleteDoc(
     docId: string,
@@ -1225,24 +782,8 @@ class GasClient {
     settings?: SupplierSettings;
     rolledBackNextNo?: string;
   }> {
-    await this.mutateOrThrow(
-      'deleteDoc',
-      { docId, docType, docNo, firmId },
-      "You're offline \u2014 the document was NOT deleted from your sheet. Reconnect and try again."
-    );
-    // Tombstone only after the backend confirms: a failed delete must never
-    // hide a document that still exists in the register.
-    recordDeletedDocKey(docId, docNo, docType, firmId);
-    return this.localCall('deleteDoc', { docId, docType, docNo, firmId });
-  }
-
-  /**
-   * Updates or saves user PIN locally
-   */
-  updatePin(newPin: string): boolean {
-    if (!newPin || newPin.length < 4) return false;
-    this.setPin(newPin);
-    return true;
+    const res: any = await this.mutateOrThrow('deleteDoc', { docId, docType, docNo, firmId });
+    return { ok: true, ...(res || {}) };
   }
 
   async checkBackendStatus(): Promise<{
@@ -1251,6 +792,7 @@ class GasClient {
     gasConfigured: boolean;
     gasApiKeyConfigured: boolean;
     appPinConfigured: boolean;
+    deletePinConfigured: boolean;
     gasUrl?: string;
     message: string;
   }> {
@@ -1277,6 +819,7 @@ class GasClient {
           gasConfigured: false,
           gasApiKeyConfigured: false,
           appPinConfigured: true,
+          deletePinConfigured: false,
           message: 'PIN rejected by server. Check that your device PIN matches APP_PIN.',
         };
       }
@@ -1293,6 +836,7 @@ class GasClient {
           gasConfigured: false,
           gasApiKeyConfigured: !!(localApiKey || config.gasApiKeyConfigured),
           appPinConfigured: !!config.appPinConfigured,
+          deletePinConfigured: !!config.deletePinConfigured,
           gasUrl: '',
           message: 'Google Apps Script Web App URL is not set. Enter your Web App URL below and click "Connect & Sync".',
         };
@@ -1309,6 +853,7 @@ class GasClient {
             gasConfigured: true,
             gasApiKeyConfigured: !!(localApiKey || config.gasApiKeyConfigured),
             appPinConfigured: !!config.appPinConfigured,
+          deletePinConfigured: !!config.deletePinConfigured,
             gasUrl: effectiveUrl,
             message: `Connected to Google Sheet successfully! Sync active (${docCount} documents, ${clientCount} clients in database).`,
           };
@@ -1320,6 +865,7 @@ class GasClient {
           gasConfigured: true,
           gasApiKeyConfigured: !!(localApiKey || config.gasApiKeyConfigured),
           appPinConfigured: !!config.appPinConfigured,
+          deletePinConfigured: !!config.deletePinConfigured,
           gasUrl: effectiveUrl,
           message: `Google Apps Script returned an error: ${err.message}`,
         };
@@ -1331,6 +877,7 @@ class GasClient {
         gasConfigured: true,
         gasApiKeyConfigured: !!(localApiKey || config.gasApiKeyConfigured),
         appPinConfigured: !!config.appPinConfigured,
+          deletePinConfigured: !!config.deletePinConfigured,
         gasUrl: effectiveUrl,
         message: 'Google Apps Script proxy is active.',
       };
@@ -1341,6 +888,7 @@ class GasClient {
         gasConfigured: false,
         gasApiKeyConfigured: false,
         appPinConfigured: false,
+        deletePinConfigured: false,
         message: `Failed to reach server: ${err.message}`,
       };
     }
@@ -1352,29 +900,23 @@ class GasClient {
    * the old implementation accepted ANY pin because bootstrap() swallowed the 401.
    */
   async verifyPin(pin: string): Promise<boolean> {
+    // Pure server check: the PIN is verified against APP_PIN at the proxy.
+    // Nothing is stored anywhere - a page refresh always returns to the PIN screen.
+    // A wrong PIN returns false; an unreachable server throws (the UI shows
+    // "can't reach server" instead of letting anyone in).
     const prevPin = this.getPin();
+    this.setPin(pin);
     try {
-      this.setPin(pin);
-      await this.callGas('ping', {}); // throws on 401 Incorrect PIN; never swallowed
-      this.setIsOfflineMode(false);
-      this.offlineReason = '';
+      await this.callGas('ping', {});
       return true;
     } catch (err: any) {
       const msg = String(err?.message || '');
       if (/incorrect pin/i.test(msg)) {
-        // Wrong PIN: restore previous device state and reject.
-        if (prevPin) this.setPin(prevPin); else this.clearPin();
-        return false;
-      }
-      // Backend unreachable: device-local gate. Accept when it matches the
-      // previously saved PIN, or on first-ever setup (no PIN stored yet).
-      if (prevPin) {
-        if (pin === prevPin) { this.setPin(pin); return true; }
         this.setPin(prevPin);
         return false;
       }
-      if (pin && pin.length >= 4) { this.setPin(pin); return true; }
-      return false;
+      this.setPin(prevPin);
+      throw new Error('Could not reach the billing server. Check your connection and try again.');
     }
   }
 }

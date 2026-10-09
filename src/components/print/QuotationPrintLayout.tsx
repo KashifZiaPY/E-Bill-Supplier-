@@ -425,7 +425,7 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
                           </td>
                         </tr>
                       )}
-                      <tr className={`border-b ${isHashirStyle ? 'border-slate-300' : 'border-gray-400'} ${
+                      <tr className={`border-b-2 ${isHashirStyle ? 'border-slate-400' : 'border-gray-500'} ${
                         idx % 2 === 1 ? (isHashirStyle ? 'bg-slate-50/70' : 'bg-gray-100/90') : 'bg-white'
                       }`}>
                         <td className={`text-center py-1.5 px-1.5 font-mono font-bold text-xs ${

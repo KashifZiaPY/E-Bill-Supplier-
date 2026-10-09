@@ -178,7 +178,7 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
         </button>
 
         <p className="text-[11px] text-ink-400 mt-4 text-center">
-          Default PIN is <strong className="text-ink-700">1234</strong>
+          Authorized users only · your session locks on refresh
         </p>
       </div>
 

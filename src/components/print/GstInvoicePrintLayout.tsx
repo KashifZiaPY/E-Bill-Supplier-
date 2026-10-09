@@ -159,7 +159,7 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
 
           {/* 4 Empty Form Rows for standard paper format */}
           {emptyRows.map((n) => (
-            <tr key={n} className="border-b border-gray-400 h-5 bg-white">
+            <tr key={n} className="border-b-2 border-gray-500 h-5 bg-white">
               <td className="border-r border-black"></td>
               <td className="border-r border-black"></td>
               <td className="border-r border-black"></td>

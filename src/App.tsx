@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type {
   CatalogItem,
   DocumentRecord,
@@ -11,7 +11,7 @@ import type {
   SavedClient,
   SupplierSettings,
 } from './types/billing';
-import { DEFAULT_SETTINGS, gasApi } from './api/gasClient';
+import { DEFAULT_SETTINGS, gasApi, DeletePinRequiredError } from './api/gasClient';
 import { PinScreen } from './components/PinScreen';
 import { HomeScreen } from './components/HomeScreen';
 import { EntryFormScreen } from './components/EntryFormScreen';
@@ -22,7 +22,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { generateUUID, safeNormalizeItems } from './utils/formatters';
 import { getSuggestedNextNo } from './utils/lifoHelper';
-import { WifiOff, RefreshCw, Settings as SettingsIcon, X } from 'lucide-react';
+import { WifiOff, RefreshCw } from 'lucide-react';
 
 type Screen = 'HOME' | 'ENTRY_FORM' | 'PREVIEW' | 'SETTINGS';
 
@@ -40,14 +40,21 @@ export default function App() {
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [clients, setClients] = useState<SavedClient[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
-  const [isOfflineMode, setIsOfflineMode] = useState<boolean>(false);
-  const [offlineBlockAction, setOfflineBlockAction] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string>('');
+  const [drafts, setDrafts] = useState<DocumentRecord[]>([]);
+  const [resumeCandidates, setResumeCandidates] = useState<DocumentRecord[] | null>(null);
+  const [deletePinRequired, setDeletePinRequired] = useState<boolean>(false);
+
 
   // Navigation & Active state
   const [currentScreen, setCurrentScreen] = useState<Screen>('HOME');
   const [activeDoc, setActiveDoc] = useState<DocumentRecord | null>(null);
   const [formDocType, setFormDocType] = useState<DocType>('BILL');
   const [editingDoc, setEditingDoc] = useState<Partial<DocumentRecord> | null>(null);
+  // Server-draft autosave refs (no re-render on keystroke)
+  const draftPayloadRef = useRef<any>(null);
+  const draftTimerRef = useRef<number | null>(null);
+  const isAuthenticatedRef = useRef<boolean>(false);
 
   // Client Modal state
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
@@ -68,10 +75,12 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Bootstrap data loading
+  // Bootstrap data loading — pure sheet sync. Either the live sheet answers
+  // or the failure is shown loudly; stale cached data is never presented.
   const loadBootstrapData = useCallback(async () => {
     try {
       setIsLoading(true);
+      setConnectionError('');
       const data = await gasApi.bootstrap();
       if (data) {
         if (data.settings) {
@@ -83,59 +92,66 @@ export default function App() {
         if (data.docs) setDocs(data.docs);
         if (data.clients) setClients(data.clients);
         if (data.catalog) setCatalog(data.catalog);
+        setDrafts((data as any).drafts || []);
       }
-      setIsOfflineMode(gasApi.getIsOfflineMode());
+      return data;
     } catch (err: any) {
       console.error('Failed to load data:', err);
-      if (err.message && err.message.includes('PIN')) {
+      if (err.message && /incorrect pin/i.test(err.message)) {
+        isAuthenticatedRef.current = false;
         setIsAuthenticated(false);
         setPinError(err.message);
       } else {
-        showToast('Running with local storage cache', 'info');
+        // No local cache to fall back to by design: show the failure plainly.
+        setConnectionError(err.message || 'Could not reach the billing server.');
       }
     } finally {
       setIsLoading(false);
     }
   }, [showToast]);
 
-  // Initial authentication check
-  useEffect(() => {
-    const savedPin = gasApi.getPin();
-    if (savedPin) {
-      setIsAuthenticated(true);
-      loadBootstrapData();
-    } else {
-      setIsLoading(false);
-    }
-  }, [loadBootstrapData]);
-
-  // Human label for when the offline cache was last written
-  const formatCacheLabel = (ts: number | null): string | null => {
-    if (!ts) return null;
+  // Draft autosave: the entry form reports its in-progress document here on
+  // every change (ref only, no re-render); we persist it to the sheet as a
+  // Draft after 8s of quiet, and flush it on page hide/close.
+  const persistDraft = useCallback(async () => {
+    const doc = draftPayloadRef.current;
+    if (!doc || !isAuthenticatedRef.current || !gasApi.getPin()) return;
     try {
-      const d = new Date(ts);
-      const now = Date.now();
-      const mins = Math.round((now - ts) / 60000);
-      if (mins < 1) return 'just now';
-      if (mins < 60) return `${mins} min ago`;
-      const hrs = Math.round(mins / 60);
-      if (hrs < 24) return `${hrs} hr ago`;
-      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    } catch { return null; }
-  };
-
-  /**
-   * Offline mode is read-only: creating, editing, deleting or cancelling records
-   * while the sheet is disconnected would strand them in this browser's cache,
-   * where the next live sync would silently overwrite them. Block with a clear dialog.
-   */
-  const requireOnline = (actionLabel: string): boolean => {
-    if (gasApi.getIsOfflineMode()) {
-      setOfflineBlockAction(actionLabel);
-      return false;
+      await gasApi.saveDraft(doc);
+    } catch {
+      // Silent: the next change (or page-hide flush) retries.
     }
-    return true;
-  };
+  }, []);
+
+  const handleDraftChange = useCallback((doc: any | null) => {
+    draftPayloadRef.current = doc;
+    if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
+    if (!doc) return;
+    draftTimerRef.current = window.setTimeout(() => { void persistDraft(); }, 8000);
+  }, [persistDraft]);
+
+  useEffect(() => {
+    const flush = () => {
+      const doc = draftPayloadRef.current;
+      if (!doc || !gasApi.getPin()) return;
+      void gasApi.flushDraft(doc); // keepalive: survives refresh/close
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
+
+  const clearDraftState = useCallback(() => {
+    draftPayloadRef.current = null;
+    if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = null;
+  }, []);
+
+  // Every page load starts at the PIN screen: the PIN lives in memory only,
+  // so a refresh always re-locks the portal. Unfinished work is recovered from
+  // server-side drafts after login (see resumeCandidates).
+  useEffect(() => {
+    setIsLoading(false);
+  }, []);
 
   // Current active firm helper
   const currentFirm = useMemo(() => {
@@ -168,9 +184,17 @@ export default function App() {
     try {
       const ok = await gasApi.verifyPin(pin);
       if (ok) {
+        isAuthenticatedRef.current = true;
         setIsAuthenticated(true);
         showToast(`Welcome to ${settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Portal`, 'success');
-        await loadBootstrapData();
+        const bootData: any = await loadBootstrapData();
+        try {
+          const status = await gasApi.checkBackendStatus();
+          setDeletePinRequired(!!status.deletePinConfigured);
+        } catch { /* non-fatal */ }
+        // Offer to resume unfinished work recovered from server-side drafts.
+        const freshDrafts = (bootData?.drafts || []) as DocumentRecord[];
+        if (freshDrafts.length > 0) setResumeCandidates(freshDrafts);
       } else {
         setPinError('Incorrect PIN. Please enter the valid 4-digit PIN.');
       }
@@ -183,14 +207,18 @@ export default function App() {
 
   const handleLock = () => {
     gasApi.clearPin();
+    clearDraftState();
+    isAuthenticatedRef.current = false;
     setIsAuthenticated(false);
+    setResumeCandidates(null);
+    setDrafts([]);
     setCurrentScreen('HOME');
     showToast('App locked successfully', 'info');
   };
 
   // Navigation handlers
   const handleNewBill = () => {
-    if (!requireOnline('create a new bill')) return;
+    clearDraftState();
     setFormDocType('BILL');
     setEditingDoc({
       type: 'BILL',
@@ -204,7 +232,7 @@ export default function App() {
   };
 
   const handleNewQuotation = () => {
-    if (!requireOnline('create a new quotation')) return;
+    clearDraftState();
     setFormDocType('QUOTATION');
     setEditingDoc({
       type: 'QUOTATION',
@@ -242,7 +270,6 @@ export default function App() {
   };
 
   const handleEditDoc = async (doc: DocumentRecord) => {
-    if (!requireOnline('edit this document')) return;
     const existingItems = safeNormalizeItems(doc.items || doc.Items);
     let fullDoc: DocumentRecord = { ...doc, items: existingItems, Items: existingItems };
     const docId = doc.docId || doc.DocID;
@@ -263,7 +290,6 @@ export default function App() {
   };
 
   const handleDuplicateDoc = async (doc: DocumentRecord) => {
-    if (!requireOnline('duplicate this document')) return;
     const existingItems = safeNormalizeItems(doc.items || doc.Items);
     let fullDoc: DocumentRecord = { ...doc, items: existingItems, Items: existingItems };
     const docId = doc.docId || doc.DocID;
@@ -298,7 +324,6 @@ export default function App() {
   };
 
   const handleMakeBillFromQuotation = async (quotationDoc: DocumentRecord) => {
-    if (!requireOnline('convert this quotation to a bill')) return;
     const existingItems = safeNormalizeItems(quotationDoc.items || quotationDoc.Items);
     let fullDoc: DocumentRecord = { ...quotationDoc, items: existingItems, Items: existingItems };
     const docId = quotationDoc.docId || quotationDoc.DocID;
@@ -332,9 +357,9 @@ export default function App() {
     showToast(`Created Bill from Quotation #${quotationDoc.docNo || quotationDoc.DocNo}`, 'info');
   };
 
-  const handleCancelDoc = async (docId: string) => {
-    if (!requireOnline('cancel this document')) return;
+  const handleCancelDoc = async (docId: string, authorityPin?: string) => {
     try {
+      if (deletePinRequired && authorityPin) gasApi.setDeletePin(authorityPin);
       await gasApi.cancelDoc(docId);
       setDocs((prev) =>
         prev.map((d) =>
@@ -345,12 +370,12 @@ export default function App() {
       );
       showToast('Document marked as Cancelled', 'info');
     } catch (err: any) {
+      if (err instanceof DeletePinRequiredError) throw err; // keep PIN modal open for retry
       showToast(err.message || 'Failed to cancel document', 'error');
     }
   };
 
-  const handleDeleteDoc = async (doc: DocumentRecord) => {
-    if (!requireOnline('delete this document')) return;
+  const handleDeleteDoc = async (doc: DocumentRecord, authorityPin?: string) => {
     const docId = String(doc.docId || doc.DocID || '').trim();
     const docType = String(doc.type || doc.Type || 'BILL').toUpperCase();
     const docNo = String(doc.docNo || doc.DocNo || '').trim();
@@ -376,6 +401,7 @@ export default function App() {
     });
 
     try {
+      if (deletePinRequired && authorityPin) gasApi.setDeletePin(authorityPin);
       const res = await gasApi.deleteDoc(docId, docType, docNo, firmId);
       if (res && res.settings) {
         setSettings(res.settings);
@@ -383,8 +409,8 @@ export default function App() {
       showToast(`${docType} #${docNo} deleted successfully. Numbering rolled back (LIFO).`, 'success');
     } catch (err: any) {
       console.error('Error during deleteDoc sync with Google Sheet:', err);
-      if (gasApi.getIsOfflineMode()) {
-        showToast(`Offline — ${docType} #${docNo} was NOT deleted and will reappear on reconnect.`, 'error');
+      if (err instanceof DeletePinRequiredError) {
+        throw err; // keep the LIFO modal open so the PIN can be retried
       } else {
         showToast(err.message || `Could not delete ${docType} #${docNo}.`, 'error');
       }
@@ -392,8 +418,38 @@ export default function App() {
     }
   };
 
+  // Resume an unfinished server-side draft in the entry form
+  const handleResumeDraft = (draft: DocumentRecord) => {
+    const docType = (String(draft.type || draft.Type || 'BILL').toUpperCase() as DocType) || 'BILL';
+    const freshNo = docType === 'BILL' ? currentFirm.nextBillNo : currentFirm.nextQuoteNo;
+    setFormDocType(docType);
+    setEditingDoc({
+      ...(draft as any),
+      docId: draft.docId || (draft as any).DocID,
+      status: 'Draft',
+      docNo: freshNo, // re-suggest: the draft held no number
+      DocNo: freshNo,
+    } as any);
+    setResumeCandidates(null);
+    setCurrentScreen('ENTRY_FORM');
+    showToast('Draft restored — review and save when ready.', 'info');
+  };
+
+  // Discard an unfinished server-side draft
+  const handleDiscardDraft = async (draft: DocumentRecord) => {
+    const docId = String(draft.docId || (draft as any).DocID || '').trim();
+    if (!docId) return;
+    try {
+      await gasApi.discardDraft(docId);
+      showToast('Draft discarded.', 'info');
+      await loadBootstrapData();
+      setResumeCandidates((prev) => (prev || []).filter((d) => String(d.docId || (d as any).DocID) !== docId));
+    } catch (err: any) {
+      showToast(err.message || 'Could not discard the draft.', 'error');
+    }
+  };
+
   const handleSaveDoc = async (docData: any, previewAfter: boolean) => {
-    if (!requireOnline('save this document')) return;
     setIsSaving(true);
     try {
       const res = await gasApi.saveDoc(docData);
@@ -405,6 +461,7 @@ export default function App() {
             : `Document #${res.docNo} saved successfully!`,
           corrected ? 'info' : 'success'
         );
+        clearDraftState(); // the draft row just became the real document
         await loadBootstrapData();
 
         if (previewAfter) {
@@ -432,7 +489,6 @@ export default function App() {
   };
 
   const handleSaveSettings = async (newSettings: SupplierSettings) => {
-    if (!requireOnline('save settings')) return;
     setIsSaving(true);
     try {
       const res = await gasApi.saveSettings(newSettings);
@@ -450,13 +506,11 @@ export default function App() {
 
   // Client Management Handlers
   const handleOpenAddClient = () => {
-    if (!requireOnline('add a client')) return;
     setClientToEdit(null);
     setIsClientModalOpen(true);
   };
 
   const handleOpenEditClient = (client: SavedClient) => {
-    if (!requireOnline('edit this client')) return;
     setClientToEdit(client);
     setIsClientModalOpen(true);
   };
@@ -468,7 +522,6 @@ export default function App() {
   };
 
   const handleDeleteClient = async (clientId: string, clientName: string) => {
-    if (!requireOnline('delete this client')) return;
     await gasApi.deleteClient(clientId, clientName);
     await loadBootstrapData();
     showToast(`Client "${clientName}" removed`, 'info');
@@ -485,48 +538,7 @@ export default function App() {
           errorMessage={pinError}
         />
   
-      {/* Offline read-only guard: blocks any mutation while the sheet is disconnected */}
-      {offlineBlockAction && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-[2px]" onClick={() => setOfflineBlockAction(null)}>
-          <div className="corp-card max-w-sm w-full p-6 relative" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setOfflineBlockAction(null)}
-              className="absolute top-3.5 right-3.5 p-1.5 text-ink-400 hover:text-ink-700 hover:bg-paper rounded-lg transition"
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <span className="w-11 h-11 rounded-xl bg-gold-100 flex items-center justify-center mb-3">
-              <WifiOff className="w-5 h-5 text-gold-700" />
-            </span>
-            <h3 className="text-[15px] font-extrabold text-ink-900 tracking-tight mb-1.5">
-              You're offline — read-only mode
-            </h3>
-            <p className="text-xs text-ink-500 leading-relaxed mb-1.5">
-              You tried to <strong>{offlineBlockAction}</strong>, but your Google Sheet isn't connected in this browser.
-            </p>
-            <p className="text-xs text-ink-500 leading-relaxed mb-5">
-              Records changed offline would never reach your register, so editing is paused until you reconnect.
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => { setOfflineBlockAction(null); loadBootstrapData(); }}
-                className="corp-btn-primary w-full text-xs"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry Connection</span>
-              </button>
-              <button
-                onClick={() => { setOfflineBlockAction(null); handleOpenSettings(); }}
-                className="corp-btn-ghost w-full text-xs"
-              >
-                <SettingsIcon className="w-3.5 h-3.5" />
-                <span>Connect Sheet in Settings</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </ErrorBoundary>
     );
   }
@@ -541,10 +553,8 @@ export default function App() {
           docs={docs}
           settings={settings}
           clients={clients}
-          isOfflineMode={isOfflineMode}
-          offlineReason={gasApi.getOfflineReason()}
-          cacheDateLabel={formatCacheLabel(gasApi.getCacheTimestamp())}
-          onRetryConnection={loadBootstrapData}
+          onRetryConnection={() => { void loadBootstrapData(); }}
+          deletePinRequired={deletePinRequired}
           activeFirmId={activeFirmId}
           onSelectFirm={(id) => setActiveFirmId(id)}
           onNewBill={handleNewBill}
@@ -576,6 +586,7 @@ export default function App() {
           docs={docs}
           onBack={() => setCurrentScreen('HOME')}
           onSave={handleSaveDoc}
+          onDraftChange={handleDraftChange}
           isSaving={isSaving}
         />
       )}
@@ -612,7 +623,8 @@ export default function App() {
           onBack={() => setCurrentScreen('HOME')}
           onSave={handleSaveSettings}
           onDeleteDoc={handleDeleteDoc}
-          onRefreshData={loadBootstrapData}
+          deletePinRequired={deletePinRequired}
+          onRefreshData={async () => { await loadBootstrapData(); }}
           isSaving={isSaving}
         />
       )}
@@ -624,6 +636,69 @@ export default function App() {
         onSave={handleSaveClient}
         clientToEdit={clientToEdit}
       />
+
+      {/* Fatal connection state: pure sheet sync means no cached data to show.
+          The register is either live or it says so plainly. */}
+      {connectionError && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-paper">
+          <div className="corp-card max-w-sm w-full p-6 text-center">
+            <span className="w-11 h-11 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center mb-3 mx-auto">
+              <WifiOff className="w-5 h-5 text-[#b3372f]" />
+            </span>
+            <h3 className="text-[15px] font-extrabold text-ink-900 tracking-tight mb-1.5">
+              Can't reach your Google Sheet
+            </h3>
+            <p className="text-xs text-ink-500 mb-1.5 leading-relaxed">
+              {connectionError}
+            </p>
+            <p className="text-[11px] text-ink-400 mb-4 leading-relaxed">
+              Nothing is stored in this browser, so there's no stale copy to show. Reconnect to continue.
+            </p>
+            <button onClick={() => { loadBootstrapData(); }} className="corp-btn-primary w-full text-xs">
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry Connection</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Resume unfinished work recovered from server-side drafts */}
+      {resumeCandidates && resumeCandidates.length > 0 && (
+        <div className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-[2px]">
+          <div className="corp-card max-w-md w-full p-6">
+            <h3 className="text-[15px] font-extrabold text-ink-900 tracking-tight mb-1">
+              Unfinished work found
+            </h3>
+            <p className="text-xs text-ink-500 mb-4 leading-relaxed">
+              These drafts were auto-saved to your Google Sheet. Resume one, or discard it.
+            </p>
+            <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+              {resumeCandidates.map((d: any) => {
+                const dId = String(d.docId || d.DocID || '');
+                const dType = String(d.type || d.Type || 'BILL');
+                const dClient = String(d.clientName || d.ClientName || 'No client yet');
+                const dItems = Array.isArray(d.items || d.Items) ? (d.items || d.Items).length : 0;
+                const dWhen = d.updatedAt ? new Date(d.updatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+                return (
+                  <div key={dId} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-line bg-paper/60">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-bold text-ink-900 truncate">{dType === 'BILL' ? 'Bill' : 'Quotation'} draft · {dClient}</div>
+                      <div className="text-[11px] text-ink-400">{dItems} item{dItems === 1 ? '' : 's'}{dWhen ? ` · ${dWhen}` : ''}</div>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button onClick={() => handleResumeDraft(d)} className="corp-btn-primary !py-1.5 text-[11px]">Resume</button>
+                      <button onClick={() => handleDiscardDraft(d)} className="corp-btn-ghost !py-1.5 text-[11px]">Discard</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={() => setResumeCandidates(null)} className="corp-btn-ghost w-full text-xs">
+              Start fresh instead
+            </button>
+          </div>
+        </div>
+      )}
     </ErrorBoundary>
   );
 }

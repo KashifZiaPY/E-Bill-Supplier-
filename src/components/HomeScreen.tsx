@@ -46,9 +46,6 @@ interface Props {
   docs: DocumentRecord[];
   settings: SupplierSettings;
   clients: SavedClient[];
-  isOfflineMode: boolean;
-  offlineReason?: string;
-  cacheDateLabel?: string | null;
   onRetryConnection?: () => void;
   activeFirmId: string;
   onSelectFirm: (firmId: string) => void;
@@ -59,8 +56,9 @@ interface Props {
   onEditDoc: (doc: DocumentRecord) => void;
   onDuplicateDoc: (doc: DocumentRecord) => void;
   onMakeBillFromQuotation: (doc: DocumentRecord) => void;
-  onCancelDoc: (docId: string) => void;
-  onDeleteDoc?: (doc: DocumentRecord) => Promise<void>;
+  onCancelDoc: (docId: string, authorityPin?: string) => Promise<void>;
+  onDeleteDoc?: (doc: DocumentRecord, authorityPin?: string) => Promise<void>;
+  deletePinRequired?: boolean;
   onRefresh: () => void;
   onLock: () => void;
   onOpenAddClient: () => void;
@@ -72,9 +70,6 @@ export const HomeScreen: React.FC<Props> = ({
   docs,
   settings,
   clients,
-  isOfflineMode,
-  offlineReason,
-  cacheDateLabel,
   onRetryConnection,
   activeFirmId,
   onSelectFirm,
@@ -87,6 +82,7 @@ export const HomeScreen: React.FC<Props> = ({
   onMakeBillFromQuotation,
   onCancelDoc,
   onDeleteDoc,
+  deletePinRequired,
   onRefresh,
   onLock,
   onOpenAddClient,
@@ -102,20 +98,33 @@ export const HomeScreen: React.FC<Props> = ({
 
   // LIFO Deletion state
   const [docToDeleteLifo, setDocToDeleteLifo] = useState<DocumentRecord | null>(null);
+  const [lifoMode, setLifoMode] = useState<'delete' | 'cancel'>('delete');
   const [isLifoModalOpen, setIsLifoModalOpen] = useState(false);
   const [isDeletingLifo, setIsDeletingLifo] = useState(false);
 
   const handleOpenLifoDelete = (doc: DocumentRecord) => {
     setDocToDeleteLifo(doc);
+    setLifoMode('delete');
     setIsLifoModalOpen(true);
   };
 
-  const handleConfirmLifoDelete = async (doc: DocumentRecord) => {
+  const handleConfirmLifoCancel = async (doc: DocumentRecord, authorityPin?: string) => {
+    setIsDeletingLifo(true);
+    try {
+      const id = String(doc.docId || doc.DocID || '');
+      if (onCancelDoc) await onCancelDoc(id, authorityPin);
+      setIsLifoModalOpen(false);
+      setDocToDeleteLifo(null);
+    } finally {
+      setIsDeletingLifo(false);
+    }
+  };
+  const handleConfirmLifoDelete = async (doc: DocumentRecord, authorityPin?: string) => {
     setIsDeletingLifo(true);
     try {
       setActiveMenuDocId(null);
       if (onDeleteDoc) {
-        await onDeleteDoc(doc);
+        await onDeleteDoc(doc, authorityPin);
       }
       setIsLifoModalOpen(false);
       setDocToDeleteLifo(null);
@@ -414,7 +423,7 @@ export const HomeScreen: React.FC<Props> = ({
   }, [clientReportSummaries, drillDownClient]);
 
   return (
-    <div className="min-h-screen bg-paper flex flex-col">
+    <div className="min-h-screen flex flex-col">
       {/* Corporate header */}
       <header className="bg-navy-950 text-white sticky top-0 z-30 shadow-[0_2px_12px_rgba(12,28,51,0.35)]">
         <div className="h-0.5 bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />
@@ -454,25 +463,14 @@ export const HomeScreen: React.FC<Props> = ({
               <ChevronDown className="w-4 h-4 text-white/70 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
 
-            {isOfflineMode ? (
-              <button
-                onClick={onOpenSettings}
-                className="px-3 py-2 rounded-xl text-xs font-bold bg-gold-500 text-navy-950 flex items-center gap-1.5 hover:bg-gold-400 transition"
-                title="Google Sheet disconnected. Click to configure Web App URL in Settings."
-              >
-                <span className="w-2 h-2 rounded-full bg-[#b3372f] animate-pulse" />
-                <span className="hidden md:inline">Connect Sheet</span>
-              </button>
-            ) : (
-              <button
-                onClick={onRefresh}
-                className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-400/10 text-emerald-300 border border-emerald-400/30 hover:bg-emerald-400/20 transition"
-                title="Google Sheet live connected · Click to refresh records"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span>Synced · {docs.length} docs</span>
-              </button>
-            )}
+            <button
+              onClick={onRefresh}
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-400/10 text-emerald-300 border border-emerald-400/30 hover:bg-emerald-400/20 transition"
+              title="Google Sheet live connected · Click to refresh records"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span>Synced · {docs.length} docs</span>
+            </button>
 
             <button
               onClick={onRefresh}
@@ -492,41 +490,6 @@ export const HomeScreen: React.FC<Props> = ({
         </div>
       </header>
 
-      {/* Offline / stale-cache banner: impossible to mistake cached data for live records */}
-      {isOfflineMode && (
-        <div className="bg-[#7a4a00] text-white">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-            <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-5 h-5 text-gold-400" />
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-extrabold tracking-tight">
-                Offline — you're viewing cached records{cacheDateLabel ? ` saved ${cacheDateLabel}` : ''}, not your live Google Sheet.
-              </p>
-              <p className="text-xs text-white/80 mt-0.5">
-                {offlineReason || 'The sheet is not connected in this browser.'} Bills created here will NOT reach your sheet until you reconnect.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {onRetryConnection && (
-                <button
-                  onClick={onRetryConnection}
-                  className="px-3.5 py-2 rounded-xl bg-white text-[#7a4a00] text-xs font-extrabold hover:bg-gold-100 transition flex items-center gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Retry Connection</span>
-                </button>
-              )}
-              <button
-                onClick={onOpenSettings}
-                className="px-3.5 py-2 rounded-xl bg-gold-500 text-navy-950 text-xs font-extrabold hover:bg-gold-400 transition"
-              >
-                Connect Sheet
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <main className="max-w-6xl mx-auto px-4 py-5 w-full flex-1">
         {/* KPI cards — restrained corporate */}
@@ -841,7 +804,7 @@ export const HomeScreen: React.FC<Props> = ({
                                     )}
                                     {!isCancelled && (
                                       <button
-                                        onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); if (confirm(`Cancel ${docType} #${docNo}?`)) onCancelDoc(docId); }}
+                                        onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); const d = filteredDocs.find((x) => String(x.docId || x.DocID) === docId); if (deletePinRequired && d) { setDocToDeleteLifo(d); setLifoMode('cancel'); setIsLifoModalOpen(true); } else if (confirm(`Cancel ${docType} #${docNo}?`)) { void onCancelDoc(docId); } }}
                                         className="w-full px-3.5 py-2.5 text-left hover:bg-red-50 text-[#b3372f] flex items-center gap-2.5 border-t border-line"
                                       >
                                         <Ban className="w-4 h-4" /><span>Cancel document</span>
@@ -1203,9 +1166,12 @@ export const HomeScreen: React.FC<Props> = ({
       <LifoDeleteModal
         isOpen={isLifoModalOpen}
         doc={docToDeleteLifo}
-        onClose={() => { setIsLifoModalOpen(false); setDocToDeleteLifo(null); }}
+        onClose={() => { setIsLifoModalOpen(false); setDocToDeleteLifo(null); setLifoMode('delete'); }}
         onConfirmDelete={handleConfirmLifoDelete}
+        onConfirmCancel={handleConfirmLifoCancel}
+        mode={lifoMode}
         isDeleting={isDeletingLifo}
+        deletePinRequired={deletePinRequired}
       />
     </div>
   );

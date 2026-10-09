@@ -38,6 +38,7 @@ export default async function handler(req: any, res: any) {
       gasUrlConfigured: !!activeUrl,
       gasApiKeyConfigured: !!activeKey,
       appPinConfigured: !!process.env.APP_PIN,
+      deletePinConfigured: !!process.env.DELETE_PIN,
       gasUrlPreview: activeUrl ? (activeUrl.length > 55 ? activeUrl.substring(0, 42) + '...' + activeUrl.substring(activeUrl.length - 12) : activeUrl) : '',
     });
   }
@@ -65,6 +66,23 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({
         ok: false,
         error: 'Invalid or missing App PIN. Please verify your PIN.',
+      });
+    }
+  }
+
+  // 1b) Destructive actions need the separate delete PIN when DELETE_PIN is configured.
+  // This keeps day-to-day bill creators from deleting/cancelling without the
+  // authority PIN, even though they hold the portal PIN.
+  const DESTRUCTIVE_ACTIONS = ['deleteDoc', 'cancelDoc'];
+  const configuredDeletePin = process.env.DELETE_PIN;
+  const destructiveAction = String(bodyData?.action || '');
+  if (configuredDeletePin && DESTRUCTIVE_ACTIONS.includes(destructiveAction)) {
+    const providedDeletePin = req.headers['x-delete-pin'] || req.headers['X-Delete-Pin'];
+    if (!providedDeletePin || String(providedDeletePin).trim() !== String(configuredDeletePin).trim()) {
+      return res.status(401).json({
+        ok: false,
+        error: 'Delete authority PIN required. Enter the deletion PIN to continue.',
+        deletePinRequired: true,
       });
     }
   }
@@ -102,6 +120,7 @@ export default async function handler(req: any, res: any) {
         gasUrlConfigured: !!gasUrl,
         gasApiKeyConfigured: !!gasApiKey,
         appPinConfigured: !!process.env.APP_PIN,
+        deletePinConfigured: !!process.env.DELETE_PIN,
         gasUrlPreview: gasUrl ? (gasUrl.length > 55 ? gasUrl.substring(0, 42) + '...' + gasUrl.substring(gasUrl.length - 12) : gasUrl) : '',
       },
     });

@@ -32,7 +32,8 @@ interface Props {
   docs?: DocumentRecord[];
   onBack: () => void;
   onSave: (newSettings: SupplierSettings) => Promise<void>;
-  onDeleteDoc?: (doc: DocumentRecord) => Promise<void>;
+  onDeleteDoc?: (doc: DocumentRecord, authorityPin?: string) => Promise<void>;
+  deletePinRequired?: boolean;
   onRefreshData?: () => Promise<void>;
   isSaving: boolean;
 }
@@ -43,6 +44,7 @@ export const SettingsScreen: React.FC<Props> = ({
   onBack,
   onSave,
   onDeleteDoc,
+  deletePinRequired,
   onRefreshData,
   isSaving,
 }) => {
@@ -61,36 +63,22 @@ export const SettingsScreen: React.FC<Props> = ({
     setFormData({ ...settings });
   }, [settings]);
 
-  // Security PIN management & LIFO deletion state
-  const [pinInput, setPinInput] = useState('');
-  const [pinSuccessMsg, setPinSuccessMsg] = useState('');
+  // LIFO deletion state
   const [docToDeleteLifo, setDocToDeleteLifo] = useState<DocumentRecord | null>(null);
   const [isLifoModalOpen, setIsLifoModalOpen] = useState(false);
   const [isDeletingLifo, setIsDeletingLifo] = useState(false);
   const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
-
-  const handleUpdatePin = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!pinInput || pinInput.length < 4) {
-      alert('Please enter a 4-digit Security PIN.');
-      return;
-    }
-    gasApi.updatePin(pinInput);
-    setPinSuccessMsg('Security PIN updated successfully!');
-    setPinInput('');
-    setTimeout(() => setPinSuccessMsg(''), 4000);
-  };
 
   const handleOpenLifoDelete = (doc: DocumentRecord) => {
     setDocToDeleteLifo(doc);
     setIsLifoModalOpen(true);
   };
 
-  const handleConfirmLifoDelete = async (doc: DocumentRecord) => {
+  const handleConfirmLifoDelete = async (doc: DocumentRecord, authorityPin?: string) => {
     setIsDeletingLifo(true);
     try {
       if (onDeleteDoc) {
-        await onDeleteDoc(doc);
+        await onDeleteDoc(doc, authorityPin);
       }
       setIsLifoModalOpen(false);
       setDocToDeleteLifo(null);
@@ -201,12 +189,11 @@ export const SettingsScreen: React.FC<Props> = ({
   };
 
   const handleWipeCacheAndSync = async () => {
-    if (!window.confirm('Wipe local offline cache and pull pure, live records directly from Google Sheet?')) {
+    if (!window.confirm('Pull fresh, live records directly from Google Sheet?')) {
       return;
     }
     setIsWipingCache(true);
     try {
-      gasApi.wipeLocalCache();
       if (onRefreshData) {
         await onRefreshData();
       }
@@ -337,7 +324,7 @@ export const SettingsScreen: React.FC<Props> = ({
   };
 
   return (
-    <div className="min-h-screen bg-paper flex flex-col">
+    <div className="min-h-screen flex flex-col">
       {isTestingMargins && (
         <div className="fixed inset-0 z-50 bg-white overflow-auto p-4 flex flex-col">
           <div className="no-print mb-4 flex items-center justify-between corp-card p-3.5">
@@ -551,20 +538,23 @@ export const SettingsScreen: React.FC<Props> = ({
               <span className="corp-chip bg-navy-50 text-navy-800 border border-navy-100"><Lock className="w-3 h-3" /> PIN protected</span>
             </div>
 
-            <div className="p-4 rounded-xl bg-paper border border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <div>
-                <span className="text-[13px] font-bold text-ink-900 block">Security PIN</span>
-                <p className="text-[11px] text-ink-400 mt-0.5">Required on launch and for deleting the last entry.</p>
-                {pinSuccessMsg && <span className="text-xs font-bold text-emerald-700 block mt-1">✓ {pinSuccessMsg}</span>}
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="password" maxLength={8} placeholder="New 4-digit PIN"
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
-                  className="corp-input !w-36 font-mono font-bold"
-                />
-                <button type="button" onClick={handleUpdatePin} className="corp-btn-primary !py-2.5 text-xs">Update PIN</button>
+            <div className="p-4 rounded-xl bg-paper border border-line mb-4">
+              <span className="text-[13px] font-bold text-ink-900 block mb-2">How the PINs work</span>
+              <div className="space-y-2.5 text-[12px] text-ink-700 leading-relaxed">
+                <p>
+                  <strong className="text-ink-900">Portal PIN</strong> — set in Vercel as <code className="px-1.5 py-0.5 rounded bg-navy-50 border border-navy-100 font-mono text-[11px]">APP_PIN</code>.
+                  Required on <strong>every browser refresh</strong>; nothing is remembered on the device.
+                  To change it: Vercel dashboard → your project → Settings → Environment Variables → edit <code className="px-1 py-0.5 rounded bg-navy-50 border border-navy-100 font-mono text-[11px]">APP_PIN</code> → Save → redeploy.
+                  Every device then asks for the new PIN on its next refresh.
+                </p>
+                <p>
+                  <strong className="text-ink-900">Deletion PIN</strong> (optional) — set in Vercel as <code className="px-1.5 py-0.5 rounded bg-navy-50 border border-navy-100 font-mono text-[11px]">DELETE_PIN</code>.
+                  When set, deleting or cancelling a bill needs this <em>separate</em> PIN, so day-to-day bill creators can't destroy records.
+                  When not set, the portal PIN authorizes deletions. {deletePinRequired ? (<strong className="text-emerald-700">Currently active.</strong>) : (<span className="text-ink-400">Currently not set.</span>)}
+                </p>
+                <p className="text-ink-400 text-[11px]">
+                  The app itself can never change these PINs — they live on the server, never in the browser. That is deliberate.
+                </p>
               </div>
             </div>
 
@@ -681,11 +671,11 @@ export const SettingsScreen: React.FC<Props> = ({
                   type="button"
                   onClick={handleWipeCacheAndSync}
                   disabled={isWipingCache}
-                  className="corp-btn-ghost !py-2.5 text-xs !text-[#b3372f] !border-red-200 hover:!bg-red-50 disabled:opacity-50"
-                  title="Purge offline cache and pull clean live data"
+                  className="corp-btn-ghost !py-2.5 text-xs disabled:opacity-50"
+                  title="Pull fresh live data from the sheet"
                 >
-                  {isWipingCache ? <span className="w-3.5 h-3.5 border-2 border-[#b3372f] border-t-transparent rounded-full animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                  <span>Wipe Cache &amp; Re-sync</span>
+                  {isWipingCache ? <span className="w-3.5 h-3.5 border-2 border-navy-700 border-t-transparent rounded-full animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  <span>Re-sync Live Data</span>
                 </button>
               </div>
               {gasFeedback && (
@@ -700,7 +690,7 @@ export const SettingsScreen: React.FC<Props> = ({
               <span className="font-extrabold text-navy-900 block">Connect your sheet in 4 steps</span>
               <ol className="list-decimal list-inside space-y-1 text-[11px]">
                 <li>Open your Google Sheet → <strong>Extensions → Apps Script</strong>.</li>
-                <li>Paste the <strong>Code.gs v2.6.3</strong> script (button below) and save.</li>
+                <li>Paste the <strong>Code.gs v2.6.4</strong> script (button below) and save.</li>
                 <li><strong>Deploy → New deployment → Web app</strong> · Execute as <strong>Me</strong>, access <strong>Anyone</strong>.</li>
                 <li>Paste the web app URL above and hit <strong>Save &amp; Connect</strong>.</li>
               </ol>
@@ -712,7 +702,7 @@ export const SettingsScreen: React.FC<Props> = ({
               className="corp-btn-primary w-full !py-3 text-xs"
             >
               <FileCode className="w-4 h-4 text-gold-400" />
-              <span>View &amp; Copy Apps Script (Code.gs v2.6.3)</span>
+              <span>View &amp; Copy Apps Script (Code.gs v2.6.4)</span>
             </button>
           </section>
         </form>
@@ -729,6 +719,7 @@ export const SettingsScreen: React.FC<Props> = ({
         onClose={() => { setIsLifoModalOpen(false); setDocToDeleteLifo(null); }}
         onConfirmDelete={handleConfirmLifoDelete}
         isDeleting={isDeletingLifo}
+        deletePinRequired={deletePinRequired}
       />
     </div>
   );

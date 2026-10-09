@@ -40,6 +40,7 @@ interface Props {
   docs?: DocumentRecord[];
   onBack: () => void;
   onSave: (doc: any, previewAfter: boolean) => Promise<void>;
+  onDraftChange?: (doc: any | null) => void;
   isSaving: boolean;
 }
 
@@ -52,10 +53,21 @@ export const EntryFormScreen: React.FC<Props> = ({
   docs,
   onBack,
   onSave,
+  onDraftChange,
   isSaving,
 }) => {
   // Generate or reuse requestId for idempotency
   const requestIdRef = useRef<string>(initialDoc?.requestId || initialDoc?.RequestId || generateUUID());
+  // Stable id for the server-side draft of this form instance. A resumed draft
+  // keeps its docId so autosaves upsert the same row; a fresh form mints one.
+  const draftIdRef = useRef<string>(
+    String(initialDoc?.docId || initialDoc?.DocID || '') || ('draft-' + Date.now().toString(36))
+  );
+  // Drafts are only for NEW documents (or resumed drafts) - never for edits of
+  // issued bills, whose saved original is already safe in the sheet.
+  const isDraftContext = !initialDoc?.docId && !initialDoc?.DocID
+    || String((initialDoc as any)?.status || (initialDoc as any)?.Status || '').toUpperCase() === 'DRAFT';
+
 
   // Firm Selection (Multi-firm for MIAN FARHAN ANWAR)
   const firms = settings.firms && settings.firms.length > 0 ? settings.firms : [
@@ -337,6 +349,106 @@ export const EntryFormScreen: React.FC<Props> = ({
     setFormError('');
   };
 
+  // Assembles the full document from form state (no validation - drafts may be partial).
+  const buildDocPayload = (): any => {
+    const liveTotals = calculateTotals(items, gstRateDecimal, PST_FIXED_RATE);
+    const trimmedClient = clientName.trim();
+    return {
+    docId: draftIdRef.current || initialDoc?.docId || initialDoc?.DocID,
+    DocID: initialDoc?.docId || initialDoc?.DocID,
+    firmId: activeFirm.id,
+    firmName: activeFirm.name,
+    type: docType,
+    Type: docType,
+    docNo: docNo.trim(),
+    DocNo: docNo.trim(),
+    docNoManual: docNoManuallyEdited,
+    date,
+    Date: date,
+    validUntil: docType === 'QUOTATION' ? validUntil : undefined,
+    ValidUntil: docType === 'QUOTATION' ? validUntil : undefined,
+    clientName: trimmedClient,
+    ClientName: trimmedClient,
+    clientAddress: clientAddress.trim(),
+    ClientAddress: clientAddress.trim(),
+    clientNTN: clientNTN.trim(),
+    ClientNTN: clientNTN.trim(),
+    refText: refText.trim(),
+    RefText: refText.trim(),
+    requestId: requestIdRef.current,
+    RequestId: requestIdRef.current,
+    gstRate: gstRateDecimal,
+    GstRate: gstRateDecimal,
+    pstRate: PST_FIXED_RATE,
+    PstRate: PST_FIXED_RATE,
+    gstBreakdown: liveTotals.gstBreakdown,
+    GstBreakdown: liveTotals.gstBreakdown,
+    goodsSub: liveTotals.goodsSub,
+    GoodsSub: liveTotals.goodsSub,
+    gst: liveTotals.gst,
+    GST: liveTotals.gst,
+    serviceSub: liveTotals.serviceSub,
+    ServiceSub: liveTotals.serviceSub,
+    pst: liveTotals.pst,
+    PST: liveTotals.pst,
+    otherSub: liveTotals.otherSub,
+    OtherSub: liveTotals.otherSub,
+    grandTotal: liveTotals.grandTotal,
+    GrandTotal: liveTotals.grandTotal,
+    items: items.map((it, idx) => {
+      const q = Number(it.qty) || 0;
+      const r = Number(it.rate) || 0;
+      const a = Math.round(q * r * 100) / 100;
+      const itemGst = (it.gstRate !== undefined && it.gstRate !== null && !isNaN(Number(it.gstRate)))
+        ? Number(it.gstRate)
+        : gstRateDecimal;
+      return {
+        sr: idx + 1,
+        Sr: idx + 1,
+        description: String(it.description).trim(),
+        Description: String(it.description).trim(),
+        unit: String(it.unit || 'Nos').trim(),
+        Unit: String(it.unit || 'Nos').trim(),
+        qty: q,
+        Qty: q,
+        rate: r,
+        Rate: r,
+        tax: it.tax,
+        Tax: it.tax,
+        gstRate: it.tax === 'GST' ? itemGst : undefined,
+        GstRate: it.tax === 'GST' ? itemGst : undefined,
+        taxRate: it.tax === 'GST' ? itemGst : it.tax === 'PST' ? PST_FIXED_RATE : 0,
+        TaxRate: it.tax === 'GST' ? itemGst : it.tax === 'PST' ? PST_FIXED_RATE : 0,
+        amount: a,
+        Amount: a,
+      };
+    }),
+    };
+  };
+
+
+  // Report the in-progress document upward for server-side draft autosave.
+  // Debounced here so the parent isn't notified on every keystroke; the parent
+  // then persists it to the sheet after its own quiet window.
+  useEffect(() => {
+    if (!onDraftChange || !isDraftContext) return;
+    const hasContent =
+      items.length > 0 || clientName.trim() !== '' || refText.trim() !== '';
+    if (!hasContent) {
+      onDraftChange(null);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      try {
+        onDraftChange(buildDocPayload());
+      } catch {
+        /* never break typing for a draft */
+      }
+    }, 1200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, clientName, clientAddress, clientNTN, refText, docNo, date, validUntil]);
+
   // Submit Handler
   const handleSubmit = async (previewAfter: boolean) => {
     setAttemptedSubmit(true);
@@ -373,83 +485,12 @@ export const EntryFormScreen: React.FC<Props> = ({
 
     const liveTotals = calculateTotals(items, gstRateDecimal, PST_FIXED_RATE);
 
-    const docPayload: any = {
-      docId: initialDoc?.docId || initialDoc?.DocID,
-      DocID: initialDoc?.docId || initialDoc?.DocID,
-      firmId: activeFirm.id,
-      firmName: activeFirm.name,
-      type: docType,
-      Type: docType,
-      docNo: docNo.trim(),
-      DocNo: docNo.trim(),
-      docNoManual: docNoManuallyEdited,
-      date,
-      Date: date,
-      validUntil: docType === 'QUOTATION' ? validUntil : undefined,
-      ValidUntil: docType === 'QUOTATION' ? validUntil : undefined,
-      clientName: trimmedClient,
-      ClientName: trimmedClient,
-      clientAddress: clientAddress.trim(),
-      ClientAddress: clientAddress.trim(),
-      clientNTN: clientNTN.trim(),
-      ClientNTN: clientNTN.trim(),
-      refText: refText.trim(),
-      RefText: refText.trim(),
-      requestId: requestIdRef.current,
-      RequestId: requestIdRef.current,
-      gstRate: gstRateDecimal,
-      GstRate: gstRateDecimal,
-      pstRate: PST_FIXED_RATE,
-      PstRate: PST_FIXED_RATE,
-      gstBreakdown: liveTotals.gstBreakdown,
-      GstBreakdown: liveTotals.gstBreakdown,
-      goodsSub: liveTotals.goodsSub,
-      GoodsSub: liveTotals.goodsSub,
-      gst: liveTotals.gst,
-      GST: liveTotals.gst,
-      serviceSub: liveTotals.serviceSub,
-      ServiceSub: liveTotals.serviceSub,
-      pst: liveTotals.pst,
-      PST: liveTotals.pst,
-      otherSub: liveTotals.otherSub,
-      OtherSub: liveTotals.otherSub,
-      grandTotal: liveTotals.grandTotal,
-      GrandTotal: liveTotals.grandTotal,
-      items: items.map((it, idx) => {
-        const q = Number(it.qty) || 0;
-        const r = Number(it.rate) || 0;
-        const a = Math.round(q * r * 100) / 100;
-        const itemGst = (it.gstRate !== undefined && it.gstRate !== null && !isNaN(Number(it.gstRate)))
-          ? Number(it.gstRate)
-          : gstRateDecimal;
-        return {
-          sr: idx + 1,
-          Sr: idx + 1,
-          description: String(it.description).trim(),
-          Description: String(it.description).trim(),
-          unit: String(it.unit || 'Nos').trim(),
-          Unit: String(it.unit || 'Nos').trim(),
-          qty: q,
-          Qty: q,
-          rate: r,
-          Rate: r,
-          tax: it.tax,
-          Tax: it.tax,
-          gstRate: it.tax === 'GST' ? itemGst : undefined,
-          GstRate: it.tax === 'GST' ? itemGst : undefined,
-          taxRate: it.tax === 'GST' ? itemGst : it.tax === 'PST' ? PST_FIXED_RATE : 0,
-          TaxRate: it.tax === 'GST' ? itemGst : it.tax === 'PST' ? PST_FIXED_RATE : 0,
-          amount: a,
-          Amount: a,
-        };
-      }),
-    };
 
-    await onSave(docPayload, previewAfter);
+    await onSave(buildDocPayload(), previewAfter);
   };
 
   return (
-    <div className="min-h-screen bg-paper flex flex-col pb-28 sm:pb-10">
+    <div className="min-h-screen flex flex-col pb-28 sm:pb-10">
       {/* Corporate top bar */}
       <header className="bg-navy-950 text-white sticky top-0 z-30 shadow-[0_2px_12px_rgba(12,28,51,0.35)]">
         <div className="h-0.5 bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />

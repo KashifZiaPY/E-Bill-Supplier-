@@ -84,6 +84,10 @@ function doPost(e) {
         var deleteResult = handleDeleteDoc(ss, payload);
         return createJsonResponse({ ok: true, data: deleteResult });
 
+      case 'discardDraft':
+        var discardResult = handleDiscardDraft(ss, payload);
+        return createJsonResponse({ ok: true, data: discardResult });
+
       case 'cancelDoc':
         var cancelResult = handleCancelDoc(ss, payload);
         return createJsonResponse({ ok: true, data: cancelResult });
@@ -115,7 +119,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.3',
+    version: '2.6.4',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -128,11 +132,20 @@ function doGet(e) {
 function handleBootstrap(ss) {
   var settings = loadSettings(ss);
   var clients = loadClients(ss);
-  var docs = loadDocuments(ss);
+  var allDocs = loadDocuments(ss);
+  var docs = [];
+  var drafts = [];
+  for (var i = 0; i < allDocs.length; i++) {
+    if (String(allDocs[i].status || 'Active').toUpperCase() === 'DRAFT') drafts.push(allDocs[i]);
+    else docs.push(allDocs[i]);
+  }
+  // most recently touched draft first
+  drafts.sort(function (a, b) { return String(b.updatedAt || '') < String(a.updatedAt || '') ? -1 : 1; });
   return {
     settings: settings,
     clients: clients,
-    docs: docs
+    docs: docs,
+    drafts: drafts
   };
 }
 
@@ -143,10 +156,11 @@ function handleBootstrap(ss) {
 function findDocByNumber(ss, firmId, docType, num) {
   var sheet = ss.getSheetByName('Documents');
   if (!sheet || sheet.getLastRow() < 2) return null;
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 19).getValues();
   var wantType = String(docType || 'BILL').toUpperCase();
   var wantFirm = String(firmId || '').trim();
   for (var i = data.length - 1; i >= 0; i--) {
+    if (String(data[i][18] || 'Active').toUpperCase() === 'DRAFT') continue;
     var rType = String(data[i][2] || 'BILL').toUpperCase();
     if (rType !== wantType) continue;
     var rFirm = String(data[i][3] || '').trim();
@@ -166,7 +180,9 @@ function handleSaveDoc(ss, payload) {
   // Accept every payload shape the clients send: { docData }, { doc }, or the doc itself.
   var docData = payload.docData || payload.doc || payload;
   var docId = docData.docId || docData.DocID || ('doc-' + Date.now());
-  var docNo = String(docData.docNo || docData.DocNo || '101').trim();
+  var isDraft = String(docData.status || 'Active').toUpperCase() === 'DRAFT';
+  var rawDocNo = String(docData.docNo != null ? docData.docNo : (docData.DocNo != null ? docData.DocNo : '')).trim();
+  var docNo = isDraft ? rawDocNo : (rawDocNo || '101');
   var docType = String(docData.type || docData.Type || 'BILL').toUpperCase();
   var firmId = String(docData.firmId || 'firm-anwar-traders').trim();
   var firmName = String(docData.firmName || 'Anwar Traders').trim();
@@ -215,14 +231,26 @@ function handleSaveDoc(ss, payload) {
   // An incoming number that is already taken (or below the register's max) is
   // bumped to the next free number; a fresh higher number is kept as-is.
   // Edits (rowIndexToUpdate > 0) never renumber.
+  // A draft being converted to a real document must go through numbering too.
+  var convertingDraft = false;
+  if (rowIndexToUpdate > 0 && !isDraft) {
+    var existingStatus = String(data[rowIndexToUpdate - 1][18] || 'Active').toUpperCase();
+    if (existingStatus === 'DRAFT') convertingDraft = true;
+  }
+
   var docNoWasCorrected = false;
-  if (rowIndexToUpdate <= 0) {
+  // Drafts never consume or disturb numbering; the number is assigned on final save.
+  if ((rowIndexToUpdate <= 0 || convertingDraft) && !isDraft) {
     var incomingNum = numPart(docNo);
     var maxExistingNo = getMaxDocNo(ss, firmId, docType);
     var minFreeNo = maxExistingNo + 1;
     var noPrefix = String(docNo).replace(/[0-9]/g, '');
     if (!noPrefix && docType !== 'BILL') noPrefix = 'Q-';
-    var clash = findDocByNumber(ss, firmId, docType, incomingNum);
+    if (incomingNum <= 0) {
+      docNo = noPrefix + minFreeNo;
+      docNoWasCorrected = true;
+    }
+    var clash = docNoWasCorrected ? null : findDocByNumber(ss, firmId, docType, incomingNum);
     if (clash) {
       if (docData.docNoManual === true) {
         // Explicit user intent: never silently change it. Reject with context.
@@ -287,10 +315,39 @@ function handleSaveDoc(ss, payload) {
     });
   }
 
-  // Auto-advance sequence counter in Settings
-  updateSequenceCounter(ss, firmId, docType, docNo, false);
+  // Auto-advance sequence counter in Settings (drafts don't consume numbers)
+  if (!isDraft) updateSequenceCounter(ss, firmId, docType, docNo, false);
 
   return { ok: true, docId: docId, docNo: docNo, docNoCorrected: docNoWasCorrected };
+}
+
+/**
+ * Discards an unfinished draft. Drafts never consumed a number, so there is
+ * no counter rollback - the row and its items are simply removed.
+ * Refuses to touch non-draft documents (safety).
+ */
+function handleDiscardDraft(ss, payload) {
+  var docId = String((payload && (payload.docId || payload.DocID)) || '').trim();
+  if (!docId) throw new Error('Missing docId.');
+  var docsSheet = ss.getSheetByName('Documents');
+  var data = docsSheet.getDataRange().getValues();
+  var rowIndex = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === docId) {
+      if (String(data[i][18] || 'Active').toUpperCase() !== 'DRAFT') {
+        throw new Error('Only drafts can be discarded.');
+      }
+      rowIndex = i + 1;
+      break;
+    }
+  }
+  if (rowIndex > 0) docsSheet.deleteRow(rowIndex);
+  var itemsSheet = ss.getSheetByName('Items');
+  var itemsData = itemsSheet.getDataRange().getValues();
+  for (var r = itemsData.length - 1; r >= 1; r--) {
+    if (String(itemsData[r][0]).trim() === docId) itemsSheet.deleteRow(r + 1);
+  }
+  return { ok: true, docId: docId, discarded: rowIndex > 0 };
 }
 
 /**
@@ -608,6 +665,7 @@ function loadDocuments(ss) {
       otherSub: Number(r[16] || 0),
       grandTotal: Number(r[17] || 0),
       status: String(r[18] || 'Active'),
+      updatedAt: String(r[19] || ''),
       items: itemsMap[dId] || []
     });
   }
@@ -630,11 +688,12 @@ function numPart(s) {
 function getMaxDocNo(ss, firmId, docType) {
   var sheet = ss.getSheetByName('Documents');
   if (!sheet || sheet.getLastRow() < 2) return 0;
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 19).getValues();
   var wantType = String(docType || 'BILL').toUpperCase();
   var wantFirm = String(firmId || '').trim();
   var max = 0;
   for (var i = 0; i < data.length; i++) {
+    if (String(data[i][18] || 'Active').toUpperCase() === 'DRAFT') continue; // drafts hold no number
     var rType = String(data[i][2] || 'BILL').toUpperCase();
     if (rType !== wantType) continue;
     var rFirm = String(data[i][3] || '').trim();
@@ -857,7 +916,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.3 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.4 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing

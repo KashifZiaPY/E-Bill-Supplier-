@@ -81,7 +81,7 @@ export const PreviewScreen: React.FC<Props> = ({
   const currentFirmName = doc.firmName || settings.supplierName || 'Anwar Traders';
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen">
       <style>{`
         @page {
           size: A4 portrait;
