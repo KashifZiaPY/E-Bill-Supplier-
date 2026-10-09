@@ -116,7 +116,8 @@ function handleBootstrap(ss) {
 }
 
 function handleSaveDoc(ss, payload) {
-  var docData = payload.docData || payload;
+  // Accept every payload shape the clients send: { docData }, { doc }, or the doc itself.
+  var docData = payload.docData || payload.doc || payload;
   var docId = docData.docId || docData.DocID || ('doc-' + Date.now());
   var docNo = String(docData.docNo || docData.DocNo || '101').trim();
   var docType = String(docData.type || docData.Type || 'BILL').toUpperCase();
