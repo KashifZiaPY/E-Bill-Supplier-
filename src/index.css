@@ -119,3 +119,9 @@
     color: #000 !important;
   }
 }
+
+/* Interactive affordance: Tailwind preflight resets buttons to cursor:default,
+   which hides the hand pointer on clickable cards/actions. Restore it. */
+button:not(:disabled) {
+  cursor: pointer;
+}

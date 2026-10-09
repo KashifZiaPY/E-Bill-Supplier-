@@ -686,18 +686,9 @@ export const EntryFormScreen: React.FC<Props> = ({
 
         {/* Line items */}
         <section ref={catalogContainerRef} className="corp-card p-4 sm:p-6 mb-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-[15px] font-extrabold text-ink-900">Line Items <span className="text-ink-400 font-bold">({items.length})</span></h2>
-              <p className="text-xs text-ink-400 mt-0.5">Description, unit, quantity and rate are mandatory for every row</p>
-            </div>
-            <button
-              type="button"
-              onClick={addItemRow}
-              className="corp-btn-primary !py-2 text-xs"
-            >
-              <Plus className="w-4 h-4" /><span>Add Row</span>
-            </button>
+          <div className="mb-4">
+            <h2 className="text-[15px] font-extrabold text-ink-900">Line Items <span className="text-ink-400 font-bold">({items.length})</span></h2>
+            <p className="text-xs text-ink-400 mt-0.5">Description, unit, quantity and rate are mandatory for every row</p>
           </div>
 
           <div className="space-y-3">
@@ -876,6 +867,13 @@ export const EntryFormScreen: React.FC<Props> = ({
               );
             })}
           </div>
+          <button
+            type="button"
+            onClick={addItemRow}
+            className="mt-3 w-full py-3 rounded-xl border-2 border-dashed border-navy-200 text-navy-700 text-sm font-bold flex items-center justify-center gap-2 hover:border-gold-500 hover:text-navy-900 hover:bg-gold-100/40 active:scale-[0.995] transition"
+          >
+            <Plus className="w-4 h-4" /><span>Add Row</span>
+          </button>
         </section>
 
         {/* Tax summary */}
