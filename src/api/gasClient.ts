@@ -9,6 +9,7 @@ const STORAGE_KEY_CLIENTS = 'anwar_traders_clients_v2';
 const STORAGE_KEY_DOCS = 'anwar_traders_docs_v2';
 const STORAGE_KEY_CATALOG = 'anwar_traders_catalog_v2';
 const STORAGE_KEY_OFFLINE_MODE = 'anwar_traders_offline_mode';
+const STORAGE_KEY_CACHE_TS = 'anwar_traders_cache_ts';
 const STORAGE_KEY_DELETED_DOCS = 'anwar_traders_deleted_docs_v3';
 const STORAGE_KEY_GAS_URL = 'anwar_traders_gas_url_v2';
 const STORAGE_KEY_GAS_API_KEY = 'anwar_traders_gas_api_key_v2';
@@ -29,6 +30,7 @@ export function clearFabricatedData(): void {
           return id !== 'doc-petty-187365' && !ref.includes('Petty-187365');
         });
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(cleaned));
+        try { localStorage.setItem(STORAGE_KEY_CACHE_TS, String(Date.now())); } catch { /* ignore */ }
       }
     }
     const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
@@ -526,6 +528,7 @@ class GasClient {
   private gasUrl: string = '';
   private gasApiKey: string = '';
   private isOfflineMode: boolean = false;
+  private offlineReason: string = '';
 
   constructor() {
     this.pin = localStorage.getItem('anwar_traders_pin') || '';
@@ -536,7 +539,23 @@ class GasClient {
   }
 
   getGasUrl(): string {
-    return this.gasUrl || localStorage.getItem(STORAGE_KEY_GAS_URL) || '';
+    // Priority: in-memory > this browser's saved URL > build-time Vercel env (VITE_GAS_URL).
+    // The Vercel env fallback means the sheet connects on every device/browser with zero manual setup.
+    const envUrl = (import.meta as any)?.env?.VITE_GAS_URL || '';
+    return this.gasUrl || localStorage.getItem(STORAGE_KEY_GAS_URL) || envUrl || '';
+  }
+
+  /** When the local document cache was last written (ms epoch). Used to label offline data honestly. */
+  private touchCacheTs(): void {
+    try { localStorage.setItem(STORAGE_KEY_CACHE_TS, String(Date.now())); } catch { /* ignore */ }
+  }
+
+  getCacheTimestamp(): number | null {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_CACHE_TS);
+      const n = raw ? Number(raw) : NaN;
+      return Number.isFinite(n) && n > 0 ? n : null;
+    } catch { return null; }
   }
 
   setGasUrl(url: string) {
@@ -608,6 +627,11 @@ class GasClient {
     return this.isOfflineMode;
   }
 
+  /** Human-readable reason the app fell back to offline/cached mode (empty when online). */
+  getOfflineReason(): string {
+    return this.offlineReason || '';
+  }
+
   private async callGas(action: string, payload: any = {}): Promise<any> {
     const pin = this.getPin();
     const gasUrl = this.getGasUrl();
@@ -640,6 +664,7 @@ class GasClient {
 
     if (data && data.notConfigured) {
       if (action === 'bootstrap') {
+        this.offlineReason = 'Google Sheet URL is not configured for this browser. Paste your Apps Script Web App URL in Settings → Google Sheets Sync, or set VITE_GAS_URL in Vercel.';
         this.setIsOfflineMode(true);
         return this.localCall(action, payload);
       }
@@ -652,6 +677,7 @@ class GasClient {
       const errMsg = data.error || `Google Apps Script returned an error (HTTP ${response.status})`;
       if (action === 'bootstrap') {
         console.warn('Bootstrap API error, using local cache:', errMsg);
+        this.offlineReason = errMsg;
         this.setIsOfflineMode(true);
         return this.localCall(action, payload);
       }
@@ -659,6 +685,7 @@ class GasClient {
     }
 
     this.setIsOfflineMode(false);
+    this.offlineReason = '';
     return data.data || data;
   }
 
@@ -689,6 +716,7 @@ class GasClient {
         localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
         localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
+        this.touchCacheTs();
         localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(catalog));
 
         return { settings, clients, docs, catalog };
@@ -792,6 +820,7 @@ class GasClient {
           }
         }
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
+        this.touchCacheTs();
 
         // Auto-save Client locally as well
         if (docToSave.clientName) {
@@ -856,6 +885,7 @@ class GasClient {
           doc.status = 'Cancelled';
           doc.Status = 'Cancelled';
           localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
+          this.touchCacheTs();
         }
         return { ok: true };
       }
@@ -911,6 +941,7 @@ class GasClient {
           return true;
         });
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(filtered));
+        this.touchCacheTs();
 
         // Automatic LIFO Sequence rollback: Revert nextBillNo or nextQuoteNo if applicable
         let updatedSettings: SupplierSettings | undefined;
@@ -977,6 +1008,7 @@ class GasClient {
         // Sync local storage cache
         localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(docs));
+        this.touchCacheTs();
         localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
         localStorage.setItem(STORAGE_KEY_CATALOG, JSON.stringify(catalog));
 

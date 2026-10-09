@@ -22,6 +22,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { generateUUID, safeNormalizeItems } from './utils/formatters';
 import { getSuggestedNextNo } from './utils/lifoHelper';
+import { WifiOff, RefreshCw, Settings as SettingsIcon, X } from 'lucide-react';
 
 type Screen = 'HOME' | 'ENTRY_FORM' | 'PREVIEW' | 'SETTINGS';
 
@@ -40,6 +41,7 @@ export default function App() {
   const [clients, setClients] = useState<SavedClient[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [isOfflineMode, setIsOfflineMode] = useState<boolean>(false);
+  const [offlineBlockAction, setOfflineBlockAction] = useState<string | null>(null);
 
   // Navigation & Active state
   const [currentScreen, setCurrentScreen] = useState<Screen>('HOME');
@@ -107,6 +109,34 @@ export default function App() {
     }
   }, [loadBootstrapData]);
 
+  // Human label for when the offline cache was last written
+  const formatCacheLabel = (ts: number | null): string | null => {
+    if (!ts) return null;
+    try {
+      const d = new Date(ts);
+      const now = Date.now();
+      const mins = Math.round((now - ts) / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins} min ago`;
+      const hrs = Math.round(mins / 60);
+      if (hrs < 24) return `${hrs} hr ago`;
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch { return null; }
+  };
+
+  /**
+   * Offline mode is read-only: creating, editing, deleting or cancelling records
+   * while the sheet is disconnected would strand them in this browser's cache,
+   * where the next live sync would silently overwrite them. Block with a clear dialog.
+   */
+  const requireOnline = (actionLabel: string): boolean => {
+    if (gasApi.getIsOfflineMode()) {
+      setOfflineBlockAction(actionLabel);
+      return false;
+    }
+    return true;
+  };
+
   // Current active firm helper
   const currentFirm = useMemo(() => {
     const list = settings.firms || [];
@@ -160,6 +190,7 @@ export default function App() {
 
   // Navigation handlers
   const handleNewBill = () => {
+    if (!requireOnline('create a new bill')) return;
     setFormDocType('BILL');
     setEditingDoc({
       type: 'BILL',
@@ -173,6 +204,7 @@ export default function App() {
   };
 
   const handleNewQuotation = () => {
+    if (!requireOnline('create a new quotation')) return;
     setFormDocType('QUOTATION');
     setEditingDoc({
       type: 'QUOTATION',
@@ -210,6 +242,7 @@ export default function App() {
   };
 
   const handleEditDoc = async (doc: DocumentRecord) => {
+    if (!requireOnline('edit this document')) return;
     const existingItems = safeNormalizeItems(doc.items || doc.Items);
     let fullDoc: DocumentRecord = { ...doc, items: existingItems, Items: existingItems };
     const docId = doc.docId || doc.DocID;
@@ -230,6 +263,7 @@ export default function App() {
   };
 
   const handleDuplicateDoc = async (doc: DocumentRecord) => {
+    if (!requireOnline('duplicate this document')) return;
     const existingItems = safeNormalizeItems(doc.items || doc.Items);
     let fullDoc: DocumentRecord = { ...doc, items: existingItems, Items: existingItems };
     const docId = doc.docId || doc.DocID;
@@ -264,6 +298,7 @@ export default function App() {
   };
 
   const handleMakeBillFromQuotation = async (quotationDoc: DocumentRecord) => {
+    if (!requireOnline('convert this quotation to a bill')) return;
     const existingItems = safeNormalizeItems(quotationDoc.items || quotationDoc.Items);
     let fullDoc: DocumentRecord = { ...quotationDoc, items: existingItems, Items: existingItems };
     const docId = quotationDoc.docId || quotationDoc.DocID;
@@ -298,6 +333,7 @@ export default function App() {
   };
 
   const handleCancelDoc = async (docId: string) => {
+    if (!requireOnline('cancel this document')) return;
     try {
       await gasApi.cancelDoc(docId);
       setDocs((prev) =>
@@ -314,6 +350,7 @@ export default function App() {
   };
 
   const handleDeleteDoc = async (doc: DocumentRecord) => {
+    if (!requireOnline('delete this document')) return;
     const docId = String(doc.docId || doc.DocID || '').trim();
     const docType = String(doc.type || doc.Type || 'BILL').toUpperCase();
     const docNo = String(doc.docNo || doc.DocNo || '').trim();
@@ -352,6 +389,7 @@ export default function App() {
   };
 
   const handleSaveDoc = async (docData: any, previewAfter: boolean) => {
+    if (!requireOnline('save this document')) return;
     setIsSaving(true);
     try {
       const res = await gasApi.saveDoc(docData);
@@ -384,6 +422,7 @@ export default function App() {
   };
 
   const handleSaveSettings = async (newSettings: SupplierSettings) => {
+    if (!requireOnline('save settings')) return;
     setIsSaving(true);
     try {
       const res = await gasApi.saveSettings(newSettings);
@@ -401,11 +440,13 @@ export default function App() {
 
   // Client Management Handlers
   const handleOpenAddClient = () => {
+    if (!requireOnline('add a client')) return;
     setClientToEdit(null);
     setIsClientModalOpen(true);
   };
 
   const handleOpenEditClient = (client: SavedClient) => {
+    if (!requireOnline('edit this client')) return;
     setClientToEdit(client);
     setIsClientModalOpen(true);
   };
@@ -417,6 +458,7 @@ export default function App() {
   };
 
   const handleDeleteClient = async (clientId: string, clientName: string) => {
+    if (!requireOnline('delete this client')) return;
     await gasApi.deleteClient(clientId, clientName);
     await loadBootstrapData();
     showToast(`Client "${clientName}" removed`, 'info');
@@ -432,7 +474,50 @@ export default function App() {
           isLoading={isVerifyingPin}
           errorMessage={pinError}
         />
-      </ErrorBoundary>
+  
+      {/* Offline read-only guard: blocks any mutation while the sheet is disconnected */}
+      {offlineBlockAction && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-[2px]" onClick={() => setOfflineBlockAction(null)}>
+          <div className="corp-card max-w-sm w-full p-6 relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setOfflineBlockAction(null)}
+              className="absolute top-3.5 right-3.5 p-1.5 text-ink-400 hover:text-ink-700 hover:bg-paper rounded-lg transition"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <span className="w-11 h-11 rounded-xl bg-gold-100 flex items-center justify-center mb-3">
+              <WifiOff className="w-5 h-5 text-gold-700" />
+            </span>
+            <h3 className="text-[15px] font-extrabold text-ink-900 tracking-tight mb-1.5">
+              You're offline — read-only mode
+            </h3>
+            <p className="text-xs text-ink-500 leading-relaxed mb-1.5">
+              You tried to <strong>{offlineBlockAction}</strong>, but your Google Sheet isn't connected in this browser.
+            </p>
+            <p className="text-xs text-ink-500 leading-relaxed mb-5">
+              Records changed offline would never reach your register, so editing is paused until you reconnect.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => { setOfflineBlockAction(null); loadBootstrapData(); }}
+                className="corp-btn-primary w-full text-xs"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Connection</span>
+              </button>
+              <button
+                onClick={() => { setOfflineBlockAction(null); handleOpenSettings(); }}
+                className="corp-btn-ghost w-full text-xs"
+              >
+                <SettingsIcon className="w-3.5 h-3.5" />
+                <span>Connect Sheet in Settings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </ErrorBoundary>
     );
   }
 
@@ -447,6 +532,9 @@ export default function App() {
           settings={settings}
           clients={clients}
           isOfflineMode={isOfflineMode}
+          offlineReason={gasApi.getOfflineReason()}
+          cacheDateLabel={formatCacheLabel(gasApi.getCacheTimestamp())}
+          onRetryConnection={loadBootstrapData}
           activeFirmId={activeFirmId}
           onSelectFirm={(id) => setActiveFirmId(id)}
           onNewBill={handleNewBill}

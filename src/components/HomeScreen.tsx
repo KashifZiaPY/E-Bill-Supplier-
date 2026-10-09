@@ -30,6 +30,7 @@ import {
   Trash2,
   ShieldAlert,
   Eye,
+  AlertTriangle,
 } from 'lucide-react';
 import type { DocumentRecord, SavedClient, SupplierSettings } from '../types/billing';
 import { formatCurrency, formatDateDisplay, safeNormalizeItems } from '../utils/formatters';
@@ -46,6 +47,9 @@ interface Props {
   settings: SupplierSettings;
   clients: SavedClient[];
   isOfflineMode: boolean;
+  offlineReason?: string;
+  cacheDateLabel?: string | null;
+  onRetryConnection?: () => void;
   activeFirmId: string;
   onSelectFirm: (firmId: string) => void;
   onNewBill: () => void;
@@ -69,6 +73,9 @@ export const HomeScreen: React.FC<Props> = ({
   settings,
   clients,
   isOfflineMode,
+  offlineReason,
+  cacheDateLabel,
+  onRetryConnection,
   activeFirmId,
   onSelectFirm,
   onNewBill,
@@ -484,6 +491,42 @@ export const HomeScreen: React.FC<Props> = ({
           </div>
         </div>
       </header>
+
+      {/* Offline / stale-cache banner: impossible to mistake cached data for live records */}
+      {isOfflineMode && (
+        <div className="bg-[#7a4a00] text-white">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+            <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-gold-400" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold tracking-tight">
+                Offline — you're viewing cached records{cacheDateLabel ? ` saved ${cacheDateLabel}` : ''}, not your live Google Sheet.
+              </p>
+              <p className="text-xs text-white/80 mt-0.5">
+                {offlineReason || 'The sheet is not connected in this browser.'} Bills created here will NOT reach your sheet until you reconnect.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {onRetryConnection && (
+                <button
+                  onClick={onRetryConnection}
+                  className="px-3.5 py-2 rounded-xl bg-white text-[#7a4a00] text-xs font-extrabold hover:bg-gold-100 transition flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Retry Connection</span>
+                </button>
+              )}
+              <button
+                onClick={onOpenSettings}
+                className="px-3.5 py-2 rounded-xl bg-gold-500 text-navy-950 text-xs font-extrabold hover:bg-gold-400 transition"
+              >
+                Connect Sheet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-6xl mx-auto px-4 py-5 w-full flex-1">
         {/* KPI cards — restrained corporate */}

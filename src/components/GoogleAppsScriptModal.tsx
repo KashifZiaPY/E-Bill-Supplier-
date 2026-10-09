@@ -827,7 +827,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <li>(First-time only): In Apps Script toolbar, select function <code>setupSheets</code> &gt; Click <strong>Run</strong> to auto-create tabs.</li>
             <li>Click <strong>Deploy</strong> &gt; <strong>New deployment</strong> &gt; Select type: <strong>Web app</strong>.</li>
             <li>Set <em>Execute as:</em> <strong>Me</strong> &amp; <em>Who has access:</em> <strong>Anyone</strong> (crucial so Vercel can reach it) &gt; Click <strong>Deploy</strong>.</li>
-            <li>Copy the <strong>Web app URL</strong> into Vercel Project Settings as <code>GAS_URL</code>.</li>
+            <li>Copy the <strong>Web app URL</strong> into Vercel Project Settings as <strong>two</strong> environment variables: <code>GAS_URL</code> (for the server) and <code>VITE_GAS_URL</code> (for the app itself) — then <strong>Redeploy</strong>. This connects the sheet on every browser and device with zero manual setup.</li>
           </ol>
         </div>
 
