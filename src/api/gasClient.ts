@@ -1069,7 +1069,7 @@ class GasClient {
     }
   }
 
-  async saveDoc(doc: any): Promise<{ ok: boolean; docId: string; docNo: string }> {
+  async saveDoc(doc: any): Promise<{ ok: boolean; docId: string; docNo: string; docNoCorrected?: boolean }> {
     const items = doc.items || doc.Items || [];
     const normalizedItems = items.map((it: any, idx: number) => {
       const q = Number(it.qty ?? it.Qty ?? 1);

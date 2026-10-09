@@ -398,7 +398,13 @@ export default function App() {
     try {
       const res = await gasApi.saveDoc(docData);
       if (res && res.ok) {
-        showToast(`Document #${res.docNo} saved successfully!`, 'success');
+        const corrected = (res as any).docNoCorrected || String(res.docNo) !== String(docData.docNo || docData.DocNo);
+        showToast(
+          corrected
+            ? `Bill number was already in use — saved as #${res.docNo} instead.`
+            : `Document #${res.docNo} saved successfully!`,
+          corrected ? 'info' : 'success'
+        );
         await loadBootstrapData();
 
         if (previewAfter) {

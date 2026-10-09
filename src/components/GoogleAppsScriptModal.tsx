@@ -115,7 +115,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.1',
+    version: '2.6.2',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -182,6 +182,26 @@ function handleSaveDoc(ss, payload) {
     }
   }
 
+  // BACKEND-AUTHORITATIVE NUMBERING (duplicate-proof):
+  // The frontend suggests a number from possibly stale state (stale tab, race),
+  // so for NEW documents the backend assigns the final number itself:
+  //   assigned = max(incoming number, highest existing number + 1).
+  // An incoming number that is already taken (or below the register's max) is
+  // bumped to the next free number; a fresh higher number is kept as-is.
+  // Edits (rowIndexToUpdate > 0) never renumber.
+  var docNoWasCorrected = false;
+  if (rowIndexToUpdate <= 0) {
+    var incomingNum = numPart(docNo);
+    var maxExistingNo = getMaxDocNo(ss, firmId, docType);
+    var minFreeNo = maxExistingNo + 1;
+    if (incomingNum < minFreeNo) {
+      var noPrefix = String(docNo).replace(/[0-9]/g, '');
+      if (!noPrefix && docType !== 'BILL') noPrefix = 'Q-';
+      docNo = noPrefix + minFreeNo;
+      docNoWasCorrected = true;
+    }
+  }
+
   if (rowIndexToUpdate > 0) {
     docsSheet.getRange(rowIndexToUpdate, 1, 1, docRowData.length).setValues([docRowData]);
   } else {
@@ -232,7 +252,7 @@ function handleSaveDoc(ss, payload) {
   // Auto-advance sequence counter in Settings
   updateSequenceCounter(ss, firmId, docType, docNo, false);
 
-  return { ok: true, docId: docId, docNo: docNo };
+  return { ok: true, docId: docId, docNo: docNo, docNoCorrected: docNoWasCorrected };
 }
 
 /**
@@ -799,7 +819,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.1 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.2 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing
