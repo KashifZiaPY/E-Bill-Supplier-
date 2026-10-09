@@ -115,7 +115,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.2',
+    version: '2.6.3',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -134,6 +134,32 @@ function handleBootstrap(ss) {
     clients: clients,
     docs: docs
   };
+}
+
+/**
+ * Finds a document currently using the given numeric document number
+ * (same type + firm). Returns {docId, clientName, date} or null.
+ */
+function findDocByNumber(ss, firmId, docType, num) {
+  var sheet = ss.getSheetByName('Documents');
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+  var wantType = String(docType || 'BILL').toUpperCase();
+  var wantFirm = String(firmId || '').trim();
+  for (var i = data.length - 1; i >= 0; i--) {
+    var rType = String(data[i][2] || 'BILL').toUpperCase();
+    if (rType !== wantType) continue;
+    var rFirm = String(data[i][3] || '').trim();
+    if (wantFirm && rFirm && rFirm !== wantFirm) continue;
+    if (numPart(data[i][1]) === num) {
+      return {
+        docId: String(data[i][0] || ''),
+        clientName: String(data[i][6] || ''),
+        date: String(data[i][5] || '')
+      };
+    }
+  }
+  return null;
 }
 
 function handleSaveDoc(ss, payload) {
@@ -194,9 +220,21 @@ function handleSaveDoc(ss, payload) {
     var incomingNum = numPart(docNo);
     var maxExistingNo = getMaxDocNo(ss, firmId, docType);
     var minFreeNo = maxExistingNo + 1;
-    if (incomingNum < minFreeNo) {
-      var noPrefix = String(docNo).replace(/[0-9]/g, '');
-      if (!noPrefix && docType !== 'BILL') noPrefix = 'Q-';
+    var noPrefix = String(docNo).replace(/[0-9]/g, '');
+    if (!noPrefix && docType !== 'BILL') noPrefix = 'Q-';
+    var clash = findDocByNumber(ss, firmId, docType, incomingNum);
+    if (clash) {
+      if (docData.docNoManual === true) {
+        // Explicit user intent: never silently change it. Reject with context.
+        var kindLabel = docType === 'BILL' ? 'Bill' : 'Quotation';
+        throw new Error(
+          kindLabel + ' #' + docNo + ' is already used by ' +
+          (clash.clientName || 'another entry') +
+          (clash.date ? ' (' + clash.date + ')' : '') +
+          '. Next free number is ' + noPrefix + minFreeNo + '.'
+        );
+      }
+      // Stale system suggestion: no explicit intent, so take the next free number.
       docNo = noPrefix + minFreeNo;
       docNoWasCorrected = true;
     }
@@ -819,7 +857,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.2 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.3 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing

@@ -100,6 +100,7 @@ export const EntryFormScreen: React.FC<Props> = ({
   }, [firms, selectedFirmId, docs, settings.activeFirmId, settings.nextBillNo, settings.nextQuoteNo]);
 
   // Form states
+  const [docNoManuallyEdited, setDocNoManuallyEdited] = useState(false);
   const [docNo, setDocNo] = useState<string>(() => {
     if (initialDoc?.docNo || initialDoc?.DocNo) {
       return String(initialDoc.docNo || initialDoc.DocNo || '');
@@ -381,6 +382,7 @@ export const EntryFormScreen: React.FC<Props> = ({
       Type: docType,
       docNo: docNo.trim(),
       DocNo: docNo.trim(),
+      docNoManual: docNoManuallyEdited,
       date,
       Date: date,
       validUntil: docType === 'QUOTATION' ? validUntil : undefined,
@@ -544,7 +546,7 @@ export const EntryFormScreen: React.FC<Props> = ({
               <input
                 type="text"
                 value={docNo}
-                onChange={(e) => setDocNo(e.target.value)}
+                onChange={(e) => { setDocNoManuallyEdited(true); setDocNo(e.target.value); }}
                 placeholder="Auto-numbered"
                 className="corp-input font-mono font-bold text-[15px] bg-paper focus:bg-white"
               />
