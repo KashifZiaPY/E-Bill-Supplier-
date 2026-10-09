@@ -413,14 +413,43 @@ function loadClients(ss) {
   var clients = [];
   for (var i = 1; i < data.length; i++) {
     var r = data[i];
-    if (r[1]) {
+    if (!r) continue;
+    var col0 = String(r[0] || '').trim();
+    var col1 = String(r[1] || '').trim();
+    if (!col0 && !col1) continue;
+
+    var clientId = '';
+    var clientName = '';
+    var address = '';
+    var ntn = '';
+    var strn = '';
+    var lastUsed = '';
+
+    if (col0.toLowerCase().startsWith('client-')) {
+      clientId = col0;
+      clientName = col1;
+      address = String(r[2] || '').trim();
+      ntn = String(r[3] || '').trim();
+      strn = String(r[4] || '').trim();
+      lastUsed = String(r[5] || '').trim();
+    } else {
+      // Formats where Col A is institution/client name and Col B is city/station
+      clientName = col0 || col1;
+      address = col0 ? col1 : String(r[2] || '').trim();
+      ntn = String(r[2] || r[3] || '').trim();
+      strn = String(r[3] || r[4] || '').trim();
+      lastUsed = String(r[4] || r[5] || '').trim();
+      clientId = 'client-' + clientName.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 30);
+    }
+
+    if (clientName) {
       clients.push({
-        id: String(r[0] || ('client-' + i)),
-        name: String(r[1]),
-        address: String(r[2] || ''),
-        ntn: String(r[3] || ''),
-        strn: String(r[4] || ''),
-        lastUsed: String(r[5] || '')
+        id: clientId,
+        name: clientName,
+        address: address,
+        ntn: ntn,
+        strn: strn,
+        lastUsed: lastUsed
       });
     }
   }

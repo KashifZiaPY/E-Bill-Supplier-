@@ -507,6 +507,7 @@ export default function App() {
           onBack={() => setCurrentScreen('HOME')}
           onSave={handleSaveSettings}
           onDeleteDoc={handleDeleteDoc}
+          onRefreshData={loadBootstrapData}
           isSaving={isSaving}
         />
       )}

@@ -454,16 +454,20 @@ export const HomeScreen: React.FC<Props> = ({
               <button
                 onClick={onOpenSettings}
                 className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-400 text-slate-950 flex items-center gap-1.5 shadow-sm hover:bg-amber-300 transition cursor-pointer"
-                title="Tap to verify Google Sheet connection"
+                title="Google Sheet disconnected. Click to configure Web App URL in Settings."
               >
                 <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>
                 <span className="hidden md:inline">Connect Sheet</span>
               </button>
             ) : (
-              <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+              <button
+                onClick={onRefresh}
+                className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 hover:bg-emerald-500/30 transition cursor-pointer"
+                title="Google Sheet Live Connected · Click to refresh live records"
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span>Sheet Connected</span>
-              </span>
+                <span>Sheet Synced ({docs.length})</span>
+              </button>
             )}
 
             <button

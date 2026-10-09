@@ -10,6 +10,42 @@ const STORAGE_KEY_DOCS = 'anwar_traders_docs_v2';
 const STORAGE_KEY_CATALOG = 'anwar_traders_catalog_v2';
 const STORAGE_KEY_OFFLINE_MODE = 'anwar_traders_offline_mode';
 const STORAGE_KEY_DELETED_DOCS = 'anwar_traders_deleted_docs_v2';
+const STORAGE_KEY_GAS_URL = 'anwar_traders_gas_url_v2';
+const STORAGE_KEY_GAS_API_KEY = 'anwar_traders_gas_api_key_v2';
+
+/**
+ * Clears any old fabricated mock or seed documents from local storage so
+ * the user's ledger only reflects real Google Sheet data and user entries.
+ */
+export function clearFabricatedData(): void {
+  try {
+    const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
+    if (storedDocs) {
+      const parsed = JSON.parse(storedDocs);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter((d: any) => {
+          const id = String(d?.docId || d?.DocID || '');
+          const ref = String(d?.refText || d?.RefText || '');
+          return id !== 'doc-petty-187365' && !ref.includes('Petty-187365');
+        });
+        localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(cleaned));
+      }
+    }
+    const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
+    if (storedClients) {
+      const parsed = JSON.parse(storedClients);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter((c: any) => {
+          const id = String(c?.id || '');
+          return id !== 'client-1' && id !== 'client-2' && id !== 'client-3';
+        });
+        localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(cleaned));
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
 
 export function getDeletedDocKeys(): Set<string> {
   try {
@@ -287,10 +323,23 @@ export function normalizeSingleClient(raw: any, index: number = 0): SavedClient 
 
   // 3. Case: raw is an object
   if (typeof raw === 'object') {
-    const name = String(raw.name || raw.Name || raw.clientName || raw.ClientName || '').trim();
+    let name = String(raw.name || raw.Name || raw.clientName || raw.ClientName || '').trim();
+    let id = String(raw.id || raw.ID || '').trim();
+    let address = String(raw.address || raw.Address || raw.clientAddress || raw.ClientAddress || '').trim();
+
+    // Intelligent column alignment: In many Google Sheets, Column A contains the full institution/client title
+    // (e.g. "Principal GTTC, Bhowana") and Column B contains the Station/City (e.g. "Bhowana").
+    // If id contains a real institution name (not a technical 'client-xxx' key) and name is a short city/station:
+    if (id && !id.startsWith('client-') && (id.length > name.length || !address)) {
+      if (!address && name) {
+        address = name;
+      }
+      name = id;
+      id = 'client-' + name.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 30);
+    }
+
     if (!name) return null;
 
-    const address = String(raw.address || raw.Address || raw.clientAddress || raw.ClientAddress || '').trim();
     const ntn = String(raw.ntn || raw.NTN || raw.clientNTN || raw.ClientNTN || '').trim();
     const strn = String(raw.strn || raw.STRN || raw.clientSTRN || raw.ClientSTRN || '').trim();
     const lastUsed = String(raw.lastUsed || raw.LastUsed || '').trim();
@@ -300,7 +349,7 @@ export function normalizeSingleClient(raw: any, index: number = 0): SavedClient 
     const totalBilled = Number(raw.totalBilled || raw.TotalBilled || 0) || 0;
 
     return {
-      id: String(raw.id || raw.ID || 'client-' + name.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 30)),
+      id: id || ('client-' + name.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 30)),
       name,
       Name: name,
       address,
@@ -389,24 +438,27 @@ export function normalizeClientsList(rawClients: any, docs: any[] = []): SavedCl
     });
   }
 
-  // Fallback to seed clients if nothing exists
-  if (clientMap.size === 0) {
-    SEED_CLIENTS.forEach((c) => clientMap.set(c.name.toLowerCase(), c));
-  }
-
+  // Return real registered and referenced clients without fabricated mock fallbacks
   return Array.from(clientMap.values());
 }
 
 /**
  * Safely normalizes documents from Google Apps Script or local storage.
+ * Strictly guarantees no fabricated mock documents are injected.
  */
 export function normalizeDocsList(rawDocs: any): DocumentRecord[] {
   if (!Array.isArray(rawDocs)) {
-    return [SEED_PETTY_DOC].filter((d) => !isDocDeleted(d));
+    return [];
   }
 
   return rawDocs
     .filter((d: any) => !isDocDeleted(d))
+    .filter((d: any) => {
+      // Permanently filter out any legacy fabricated petty doc
+      const docId = String(d?.docId || d?.DocID || '');
+      const ref = String(d?.refText || d?.RefText || '');
+      return docId !== 'doc-petty-187365' && !ref.includes('Petty-187365');
+    })
     .map((d: any, idx: number) => {
     const docId = String(d.docId || d.DocID || 'doc-' + idx);
     const docNo = String(d.docNo || d.DocNo || '');
@@ -479,11 +531,66 @@ export function normalizeDocsList(rawDocs: any): DocumentRecord[] {
 
 class GasClient {
   private pin: string = '';
+  private gasUrl: string = '';
+  private gasApiKey: string = '';
   private isOfflineMode: boolean = false;
 
   constructor() {
     this.pin = localStorage.getItem('anwar_traders_pin') || '';
+    this.gasUrl = localStorage.getItem(STORAGE_KEY_GAS_URL) || '';
+    this.gasApiKey = localStorage.getItem(STORAGE_KEY_GAS_API_KEY) || '';
     this.isOfflineMode = localStorage.getItem(STORAGE_KEY_OFFLINE_MODE) === 'true';
+    clearFabricatedData();
+  }
+
+  getGasUrl(): string {
+    return this.gasUrl || localStorage.getItem(STORAGE_KEY_GAS_URL) || '';
+  }
+
+  setGasUrl(url: string) {
+    this.gasUrl = url.trim();
+    localStorage.setItem(STORAGE_KEY_GAS_URL, this.gasUrl);
+  }
+
+  getGasApiKey(): string {
+    return this.gasApiKey || localStorage.getItem(STORAGE_KEY_GAS_API_KEY) || '';
+  }
+
+  setGasApiKey(key: string) {
+    this.gasApiKey = key.trim();
+    localStorage.setItem(STORAGE_KEY_GAS_API_KEY, this.gasApiKey);
+  }
+
+  async saveGasConfig(url: string, key?: string): Promise<{ ok: boolean; message: string }> {
+    this.setGasUrl(url);
+    if (key !== undefined) this.setGasApiKey(key);
+
+    try {
+      const res = await fetch('/api/gas', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-app-pin': this.getPin(),
+          'x-gas-url': this.getGasUrl(),
+          'x-gas-api-key': this.getGasApiKey(),
+        },
+        body: JSON.stringify({
+          action: 'saveGasConfig',
+          payload: { gasUrl: this.getGasUrl(), gasApiKey: this.getGasApiKey() },
+        }),
+      });
+      const data = await res.json();
+      return data;
+    } catch {
+      return { ok: true, message: 'Configuration saved locally.' };
+    }
+  }
+
+  wipeLocalCache(): void {
+    localStorage.removeItem(STORAGE_KEY_DOCS);
+    localStorage.removeItem(STORAGE_KEY_CLIENTS);
+    localStorage.removeItem(STORAGE_KEY_CATALOG);
+    localStorage.removeItem(STORAGE_KEY_DELETED_DOCS);
   }
 
   setPin(pin: string) {
@@ -511,14 +618,18 @@ class GasClient {
 
   private async callGas(action: string, payload: any = {}): Promise<any> {
     const pin = this.getPin();
+    const gasUrl = this.getGasUrl();
+    const gasApiKey = this.getGasApiKey();
 
     const response = await fetch('/api/gas', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-app-pin': pin,
+        'x-gas-url': gasUrl,
+        'x-gas-api-key': gasApiKey,
       },
-      body: JSON.stringify({ action, payload }),
+      body: JSON.stringify({ action, payload, gasUrl, gasApiKey }),
     });
 
     if (response.status === 401) {
@@ -541,7 +652,7 @@ class GasClient {
         return this.localCall(action, payload);
       }
       throw new Error(
-        'GAS_URL is not configured in Vercel Environment Variables. Please add GAS_URL and GAS_API_KEY in Vercel Project Settings.'
+        'Google Apps Script Web App URL is not configured. Please paste your Apps Script URL in Settings > Google Sheets Connection.'
       );
     }
 
@@ -575,13 +686,13 @@ class GasClient {
           settings.activeFirmId = settings.activeFirmId || DEFAULT_FIRMS[0].id;
         }
 
-        const rawDocs = storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC];
+        const rawDocs = storedDocs ? JSON.parse(storedDocs) : [];
         const docs = normalizeDocsList(rawDocs);
 
-        const rawClients = storedClients ? JSON.parse(storedClients) : SEED_CLIENTS;
+        const rawClients = storedClients ? JSON.parse(storedClients) : [];
         const clients = normalizeClientsList(rawClients, docs);
 
-        const catalog = storedCatalog ? JSON.parse(storedCatalog) : SEED_CATALOG;
+        const catalog = storedCatalog ? JSON.parse(storedCatalog) : [];
 
         localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
         localStorage.setItem(STORAGE_KEY_CLIENTS, JSON.stringify(clients));
@@ -593,7 +704,7 @@ class GasClient {
 
       case 'getDoc': {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
+        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : []);
         const targetId = String(payload?.docId || '');
         const found = docs.find((d) => String(d.docId || d.DocID || '') === targetId);
         if (found) {
@@ -607,7 +718,7 @@ class GasClient {
 
       case 'saveDoc': {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
+        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : []);
 
         const storedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
         const settings: SupplierSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS;
@@ -727,7 +838,7 @@ class GasClient {
         const rowItems = docToSave.items || docToSave.Items || [];
         if (rowItems.length > 0) {
           const storedCatalog = localStorage.getItem(STORAGE_KEY_CATALOG);
-          const catalog = storedCatalog ? JSON.parse(storedCatalog) : SEED_CATALOG;
+          const catalog = storedCatalog ? JSON.parse(storedCatalog) : [];
           for (const item of rowItems) {
             const desc = String(item.description || item.Description || '').trim();
             if (desc && !catalog.find((c: any) => c.description.toLowerCase() === desc.toLowerCase())) {
@@ -747,7 +858,7 @@ class GasClient {
 
       case 'cancelDoc': {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
+        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : []);
         const doc = docs.find((d) => (d.docId || d.DocID) === payload.docId);
         if (doc) {
           doc.status = 'Cancelled';
@@ -764,7 +875,7 @@ class GasClient {
 
       case 'saveClient': {
         const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-        const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : SEED_CLIENTS);
+        const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : []);
         const norm = normalizeSingleClient(payload.client) || payload.client;
         const normNameLower = norm.name.toLowerCase().trim();
         const idx = clients.findIndex((c) => c.id === norm.id || c.name.toLowerCase().trim() === normNameLower);
@@ -779,7 +890,7 @@ class GasClient {
 
       case 'deleteClient': {
         const storedClients = localStorage.getItem(STORAGE_KEY_CLIENTS);
-        const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : SEED_CLIENTS);
+        const clients = normalizeClientsList(storedClients ? JSON.parse(storedClients) : []);
         const targetId = payload.clientId;
         const targetNameLower = String(payload.clientName || '').toLowerCase().trim();
         const filtered = clients.filter(
@@ -791,7 +902,7 @@ class GasClient {
 
       case 'deleteDoc': {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
-        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
+        const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : []);
         const targetId = String(payload.docId || '').trim();
         const targetNo = String(payload.docNo || '').trim();
         const docType = String(payload.docType || 'BILL').toUpperCase() as DocType;
@@ -870,7 +981,7 @@ class GasClient {
         const rawClients = res.clients || [];
         const clients = normalizeClientsList(rawClients, docs);
 
-        const catalog = Array.isArray(res.catalog) ? res.catalog : SEED_CATALOG;
+        const catalog = Array.isArray(res.catalog) ? res.catalog : [];
 
         // Sync local storage cache
         localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
@@ -1078,76 +1189,97 @@ class GasClient {
   }
 
   async checkBackendStatus(): Promise<{
+    tested: boolean;
     ok: boolean;
     gasConfigured: boolean;
     gasApiKeyConfigured: boolean;
     appPinConfigured: boolean;
+    gasUrl?: string;
     message: string;
   }> {
     try {
       const pin = this.getPin();
+      const localUrl = this.getGasUrl();
+      const localApiKey = this.getGasApiKey();
+
       const response = await fetch('/api/gas', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-app-pin': pin,
+          'x-gas-url': localUrl,
+          'x-gas-api-key': localApiKey,
         },
         body: JSON.stringify({ action: 'checkConfig' }),
       });
 
       if (response.status === 401) {
         return {
+          tested: true,
           ok: false,
           gasConfigured: false,
           gasApiKeyConfigured: false,
-          appPinConfigured: false,
-          message: 'PIN rejected by server. Check that your device PIN matches APP_PIN in Vercel.',
+          appPinConfigured: true,
+          message: 'PIN rejected by server. Check that your device PIN matches APP_PIN.',
         };
       }
 
       const data = await response.json();
       const config = data?.config || {};
+      const effectiveUrl = localUrl || config.gasUrl || '';
+      const isConfigured = !!(localUrl || config.gasUrlConfigured);
 
-      if (!config.gasUrlConfigured) {
+      if (!isConfigured) {
         return {
+          tested: true,
           ok: false,
           gasConfigured: false,
-          gasApiKeyConfigured: !!config.gasApiKeyConfigured,
+          gasApiKeyConfigured: !!(localApiKey || config.gasApiKeyConfigured),
           appPinConfigured: !!config.appPinConfigured,
-          message: 'GAS_URL is missing in Vercel Environment Variables. Add GAS_URL in Vercel Settings > Environment Variables.',
+          gasUrl: '',
+          message: 'Google Apps Script Web App URL is not set. Enter your Web App URL below and click "Connect & Sync".',
         };
       }
 
       try {
         const testRes = await this.callGas('bootstrap', {});
         if (testRes) {
+          const docCount = Array.isArray(testRes.docs) ? testRes.docs.length : 0;
+          const clientCount = Array.isArray(testRes.clients) ? testRes.clients.length : 0;
           return {
+            tested: true,
             ok: true,
             gasConfigured: true,
-            gasApiKeyConfigured: !!config.gasApiKeyConfigured,
+            gasApiKeyConfigured: !!(localApiKey || config.gasApiKeyConfigured),
             appPinConfigured: !!config.appPinConfigured,
-            message: 'Connected to Google Sheet successfully! Reading and writing live data.',
+            gasUrl: effectiveUrl,
+            message: `Connected to Google Sheet successfully! Sync active (${docCount} documents, ${clientCount} clients in database).`,
           };
         }
       } catch (err: any) {
         return {
+          tested: true,
           ok: false,
           gasConfigured: true,
-          gasApiKeyConfigured: !!config.gasApiKeyConfigured,
+          gasApiKeyConfigured: !!(localApiKey || config.gasApiKeyConfigured),
           appPinConfigured: !!config.appPinConfigured,
+          gasUrl: effectiveUrl,
           message: `Google Apps Script returned an error: ${err.message}`,
         };
       }
 
       return {
+        tested: true,
         ok: true,
         gasConfigured: true,
-        gasApiKeyConfigured: !!config.gasApiKeyConfigured,
+        gasApiKeyConfigured: !!(localApiKey || config.gasApiKeyConfigured),
         appPinConfigured: !!config.appPinConfigured,
+        gasUrl: effectiveUrl,
         message: 'Google Apps Script proxy is active.',
       };
     } catch (err: any) {
       return {
+        tested: true,
         ok: false,
         gasConfigured: false,
         gasApiKeyConfigured: false,
