@@ -16,7 +16,7 @@ export function extractDocNumber(docNoStr: string | undefined | null): number {
  * Returns whether a document is the LAST recorded entry (LIFO - Last In, First Out)
  * of its type (BILL or QUOTATION) for its firm.
  * 
- * In accounting and serial numbering, ONLY the latest recorded entry may be deleted
+ * In accounting and serial numbering, ONLY the single latest recorded entry may be deleted
  * to maintain strict sequence integrity and prevent numbering gaps.
  */
 export function isLastDocLIFO(
@@ -24,36 +24,27 @@ export function isLastDocLIFO(
   allDocs: DocumentRecord[],
   targetFirmId?: string
 ): boolean {
-  if (!doc) return false;
-  const targetId = String(doc.docId || doc.DocID || '').trim();
-  if (!targetId && !doc.docNo && !doc.DocNo) return false;
-
+  if (!doc || !allDocs || allDocs.length === 0) return false;
   const docType = String(doc.type || doc.Type || 'BILL').toUpperCase() as DocType;
-  const firmId = targetFirmId || String(doc.firmId || '').trim();
 
-  // Find all documents of the same type (and firm if available)
-  const sameTypeDocs = allDocs.filter((d) => {
-    const t = String(d.type || d.Type || 'BILL').toUpperCase();
-    if (t !== docType) return false;
-    if (firmId && d.firmId && String(d.firmId).trim() !== firmId) return false;
-    return true;
-  });
+  // Single authoritative source of truth for the LIFO candidate
+  const lastCandidate = getLastDocLIFO(allDocs, docType, targetFirmId);
+  if (!lastCandidate) return false;
 
-  if (sameTypeDocs.length === 0) return false;
+  const targetId = String(doc.docId || doc.DocID || '').trim();
+  const candidateId = String(lastCandidate.docId || lastCandidate.DocID || '').trim();
 
-  // 1. In this system, new entries are inserted at index 0 (via unshift).
-  // The first item is therefore the latest created entry in chronological order.
-  const topDoc = sameTypeDocs[0];
-  const topDocId = String(topDoc.docId || topDoc.DocID || '').trim();
-  if (targetId && topDocId && targetId === topDocId) {
+  // If IDs match, it's the exact same record
+  if (targetId && candidateId && targetId === candidateId) {
     return true;
   }
 
-  // 2. Also check if this document holds the maximum numeric serial sequence.
-  const thisNum = extractDocNumber(doc.docNo || doc.DocNo);
-  if (thisNum > 0) {
-    const maxNum = Math.max(...sameTypeDocs.map((d) => extractDocNumber(d.docNo || d.DocNo)));
-    if (thisNum === maxNum) {
+  // Fallback: match by document number and type
+  const targetNo = String(doc.docNo || doc.DocNo || '').trim();
+  const candidateNo = String(lastCandidate.docNo || lastCandidate.DocNo || '').trim();
+  if (targetNo && candidateNo && targetNo === candidateNo) {
+    const candidateType = String(lastCandidate.type || lastCandidate.Type || 'BILL').toUpperCase();
+    if (docType === candidateType) {
       return true;
     }
   }
@@ -64,34 +55,63 @@ export function isLastDocLIFO(
 /**
  * Retrieves the current last recorded document (LIFO top candidate)
  * for a specific docType (BILL or QUOTATION) and firm.
+ * 
+ * STRICT UNAMBIGUOUS DEFINITION:
+ * 1. Checks matching document type and firm.
+ * 2. Selects the single document with the highest serial sequence number.
+ * 3. In case of identical sequence numbers, uses latest creation date, then index 0.
+ * Exactly ONE document is ever returned.
  */
 export function getLastDocLIFO(
   allDocs: DocumentRecord[],
   docType: DocType,
   targetFirmId?: string
 ): DocumentRecord | null {
-  const matching = allDocs.filter((d) => {
+  if (!allDocs || allDocs.length === 0) return null;
+
+  const targetType = String(docType).toUpperCase();
+  const firmId = targetFirmId ? String(targetFirmId).trim() : '';
+
+  // Filter documents matching docType (and firm if provided)
+  let matching = allDocs.filter((d) => {
     const t = String(d.type || d.Type || 'BILL').toUpperCase();
-    if (t !== docType) return false;
-    if (targetFirmId && d.firmId && String(d.firmId).trim() !== String(targetFirmId).trim()) return false;
+    if (t !== targetType) return false;
+    if (firmId && d.firmId && String(d.firmId).trim() !== firmId) return false;
     return true;
   });
 
+  // If firm filter yielded nothing, fallback to matching by docType only
+  if (matching.length === 0 && firmId) {
+    matching = allDocs.filter((d) => {
+      const t = String(d.type || d.Type || 'BILL').toUpperCase();
+      return t === targetType;
+    });
+  }
+
   if (matching.length === 0) return null;
 
-  // Look for max number or the first item
-  let candidate = matching[0];
-  let maxNum = extractDocNumber(candidate.docNo || candidate.DocNo);
+  // Find the single winner with highest numeric document number
+  let best = matching[0];
+  let bestNum = extractDocNumber(best.docNo || best.DocNo);
 
   for (let i = 1; i < matching.length; i++) {
-    const num = extractDocNumber(matching[i].docNo || matching[i].DocNo);
-    if (num > maxNum) {
-      maxNum = num;
-      candidate = matching[i];
+    const candidate = matching[i];
+    const candidateNum = extractDocNumber(candidate.docNo || candidate.DocNo);
+
+    if (candidateNum > bestNum) {
+      best = candidate;
+      bestNum = candidateNum;
+    } else if (candidateNum === bestNum && candidateNum > 0) {
+      // Tie breaker: compare dates (latest first)
+      const dateBest = new Date(best.date || best.Date || 0).getTime();
+      const dateCandidate = new Date(candidate.date || candidate.Date || 0).getTime();
+      if (!isNaN(dateCandidate) && !isNaN(dateBest) && dateCandidate > dateBest) {
+        best = candidate;
+      }
     }
   }
 
-  return candidate;
+  return best;
 }
 
 /**

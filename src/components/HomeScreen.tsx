@@ -104,6 +104,7 @@ export const HomeScreen: React.FC<Props> = ({
   const handleConfirmLifoDelete = async (doc: DocumentRecord) => {
     setIsDeletingLifo(true);
     try {
+      setActiveMenuDocId(null);
       if (onDeleteDoc) {
         await onDeleteDoc(doc);
       }
@@ -606,7 +607,7 @@ export const HomeScreen: React.FC<Props> = ({
         </div>
 
         {/* Workspace Card (Tabs: Documents vs Clients) */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
           {/* Header Controls */}
           <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Primary Tab Switcher */}
@@ -753,7 +754,7 @@ export const HomeScreen: React.FC<Props> = ({
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {filteredDocs.map((doc) => {
+                  {filteredDocs.map((doc, docIdx) => {
                     const docId = String(doc.docId || doc.DocID || '');
                     const docNo = String(doc.docNo || doc.DocNo || '—');
                     const docType = String(doc.type || doc.Type || 'BILL');
@@ -765,6 +766,7 @@ export const HomeScreen: React.FC<Props> = ({
                     const isMenuOpen = activeMenuDocId === docId;
                     const firmName = String(doc.firmName || currentFirm.name);
                     const isLastLIFO = isLastDocLIFO(doc, docs, currentFirm.id);
+                    const isBottomEntry = docIdx >= Math.max(0, filteredDocs.length - 2);
 
                     return (
                       <div
@@ -884,7 +886,7 @@ export const HomeScreen: React.FC<Props> = ({
                                     setActiveMenuDocId(null);
                                   }}
                                 />
-                                <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1.5 text-xs font-semibold animate-in fade-in">
+                                <div className={`absolute right-0 ${isBottomEntry ? 'bottom-full mb-1.5 origin-bottom-right' : 'top-full mt-1 origin-top-right'} w-52 sm:w-56 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 py-1.5 text-xs font-semibold ring-1 ring-black/5 animate-in fade-in`}>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();

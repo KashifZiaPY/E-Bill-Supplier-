@@ -9,6 +9,54 @@ const STORAGE_KEY_CLIENTS = 'anwar_traders_clients_v2';
 const STORAGE_KEY_DOCS = 'anwar_traders_docs_v2';
 const STORAGE_KEY_CATALOG = 'anwar_traders_catalog_v2';
 const STORAGE_KEY_OFFLINE_MODE = 'anwar_traders_offline_mode';
+const STORAGE_KEY_DELETED_DOCS = 'anwar_traders_deleted_docs_v2';
+
+export function getDeletedDocKeys(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DELETED_DOCS);
+    if (!raw) return new Set();
+    const list = JSON.parse(raw);
+    return new Set(Array.isArray(list) ? list : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function recordDeletedDocKey(docId?: string, docNo?: string, docType?: string, firmId?: string) {
+  try {
+    const current = getDeletedDocKeys();
+    if (docId && String(docId).trim()) {
+      current.add(String(docId).trim());
+    }
+    if (docNo && docType) {
+      current.add(`${String(docType).toUpperCase()}-${String(docNo).trim()}`);
+    }
+    if (docNo && docType && firmId) {
+      current.add(`${String(firmId).trim()}-${String(docType).toUpperCase()}-${String(docNo).trim()}`);
+    }
+    localStorage.setItem(STORAGE_KEY_DELETED_DOCS, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.error('Failed to record deleted doc key:', e);
+  }
+}
+
+export function isDocDeleted(d: any): boolean {
+  if (!d) return false;
+  const deletedKeys = getDeletedDocKeys();
+  if (deletedKeys.size === 0) return false;
+
+  const id = String(d.docId || d.DocID || '').trim();
+  if (id && deletedKeys.has(id)) return true;
+
+  const no = String(d.docNo || d.DocNo || '').trim();
+  const type = String(d.type || d.Type || 'BILL').toUpperCase();
+  if (no && type && deletedKeys.has(`${type}-${no}`)) return true;
+
+  const firm = String(d.firmId || '').trim();
+  if (no && type && firm && deletedKeys.has(`${firm}-${type}-${no}`)) return true;
+
+  return false;
+}
 
 export const DEFAULT_FIRMS: FirmProfile[] = [
   {
@@ -353,9 +401,13 @@ export function normalizeClientsList(rawClients: any, docs: any[] = []): SavedCl
  * Safely normalizes documents from Google Apps Script or local storage.
  */
 export function normalizeDocsList(rawDocs: any): DocumentRecord[] {
-  if (!Array.isArray(rawDocs)) return [SEED_PETTY_DOC];
+  if (!Array.isArray(rawDocs)) {
+    return [SEED_PETTY_DOC].filter((d) => !isDocDeleted(d));
+  }
 
-  return rawDocs.map((d: any, idx: number) => {
+  return rawDocs
+    .filter((d: any) => !isDocDeleted(d))
+    .map((d: any, idx: number) => {
     const docId = String(d.docId || d.DocID || 'doc-' + idx);
     const docNo = String(d.docNo || d.DocNo || '');
     const type = (d.type || d.Type || 'BILL').toUpperCase() === 'QUOTATION' ? 'QUOTATION' : 'BILL';
@@ -740,16 +792,27 @@ class GasClient {
       case 'deleteDoc': {
         const storedDocs = localStorage.getItem(STORAGE_KEY_DOCS);
         const docs = normalizeDocsList(storedDocs ? JSON.parse(storedDocs) : [SEED_PETTY_DOC]);
-        const targetId = String(payload.docId || '');
-        const targetDoc = docs.find((d) => String(d.docId || d.DocID || '') === targetId);
+        const targetId = String(payload.docId || '').trim();
+        const targetNo = String(payload.docNo || '').trim();
+        const docType = String(payload.docType || 'BILL').toUpperCase() as DocType;
+        const firmId = payload.firmId ? String(payload.firmId).trim() : undefined;
 
-        const filtered = docs.filter((d) => String(d.docId || d.DocID || '') !== targetId);
+        // Record persistent tombstone so this document is permanently purged
+        recordDeletedDocKey(targetId, targetNo, docType, firmId);
+
+        const filtered = docs.filter((d) => {
+          const dId = String(d.docId || d.DocID || '').trim();
+          const dNo = String(d.docNo || d.DocNo || '').trim();
+          const dType = String(d.type || d.Type || 'BILL').toUpperCase();
+          if (targetId && dId && dId === targetId) return false;
+          if (targetNo && dNo && targetNo === dNo && docType === dType) return false;
+          return true;
+        });
         localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(filtered));
 
         // Automatic LIFO Sequence rollback: Revert nextBillNo or nextQuoteNo if applicable
-        const docType = ((payload.docType || targetDoc?.type || targetDoc?.Type || 'BILL') as string).toUpperCase() as DocType;
-        const firmId = payload.firmId || targetDoc?.firmId;
-
+        let updatedSettings: SupplierSettings | undefined;
+        let rolledBack = '';
         const storedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
         if (storedSettings) {
           try {
@@ -757,7 +820,7 @@ class GasClient {
             const activeFirm = (settings.firms || []).find((f) => f.id === firmId) || settings.firms?.[0];
             if (activeFirm) {
               const currentNext = docType === 'BILL' ? (activeFirm.nextBillNo || '101') : (activeFirm.nextQuoteNo || 'Q-201');
-              const rolledBack = calculateRolledBackNextDocNo(filtered, docType, activeFirm.id, currentNext);
+              rolledBack = calculateRolledBackNextDocNo(filtered, docType, activeFirm.id, currentNext);
               if (docType === 'BILL') {
                 activeFirm.nextBillNo = rolledBack;
                 if (settings.activeFirmId === activeFirm.id) settings.nextBillNo = rolledBack;
@@ -766,13 +829,20 @@ class GasClient {
                 if (settings.activeFirmId === activeFirm.id) settings.nextQuoteNo = rolledBack;
               }
               localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+              updatedSettings = settings;
             }
           } catch (e) {
             console.error('Error rolling back sequence counter on deleteDoc:', e);
           }
         }
 
-        return { ok: true, deletedDocId: targetId };
+        return {
+          ok: true,
+          deletedDocId: targetId,
+          remainingDocs: filtered,
+          settings: updatedSettings,
+          rolledBackNextNo: rolledBack,
+        };
       }
 
       default:
@@ -982,7 +1052,14 @@ class GasClient {
     docType?: string,
     docNo?: string,
     firmId?: string
-  ): Promise<{ ok: boolean }> {
+  ): Promise<{
+    ok: boolean;
+    deletedDocId?: string;
+    remainingDocs?: DocumentRecord[];
+    settings?: SupplierSettings;
+    rolledBackNextNo?: string;
+  }> {
+    recordDeletedDocKey(docId, docNo, docType, firmId);
     try {
       await this.callGas('deleteDoc', { docId, docType, docNo, firmId });
     } catch {

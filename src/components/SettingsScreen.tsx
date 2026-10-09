@@ -46,6 +46,10 @@ export const SettingsScreen: React.FC<Props> = ({
   const [selectedFirmIndex, setSelectedFirmIndex] = useState<number>(0);
   const [isTestingMargins, setIsTestingMargins] = useState(false);
 
+  useEffect(() => {
+    setFormData({ ...settings });
+  }, [settings]);
+
   // Security PIN management & LIFO deletion state
   const [pinInput, setPinInput] = useState('');
   const [pinSuccessMsg, setPinSuccessMsg] = useState('');

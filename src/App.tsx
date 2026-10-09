@@ -300,17 +300,48 @@ export default function App() {
   };
 
   const handleDeleteDoc = async (doc: DocumentRecord) => {
-    const docId = String(doc.docId || doc.DocID || '');
+    const docId = String(doc.docId || doc.DocID || '').trim();
     const docType = String(doc.type || doc.Type || 'BILL').toUpperCase();
-    const docNo = String(doc.docNo || doc.DocNo || '');
+    const docNo = String(doc.docNo || doc.DocNo || '').trim();
     const firmId = doc.firmId || currentFirm.id;
 
+    // 1. Immediately and synchronously remove from local React state so it vanishes from the UI instantaneously
+    setDocs((prevDocs) =>
+      prevDocs.filter((d) => {
+        const dId = String(d.docId || d.DocID || '').trim();
+        const dNo = String(d.docNo || d.DocNo || '').trim();
+        const dType = String(d.type || d.Type || 'BILL').toUpperCase();
+
+        if (docId && dId && dId === docId) return false;
+        if (docNo && dNo && dNo === docNo && dType === docType) return false;
+        return true;
+      })
+    );
+
+    // 2. If the active previewed document is the deleted document, clear it
+    setActiveDoc((prev) => {
+      if (!prev) return null;
+      const prevId = String(prev.docId || prev.DocID || '').trim();
+      const prevNo = String(prev.docNo || prev.DocNo || '').trim();
+      const prevType = String(prev.type || prev.Type || 'BILL').toUpperCase();
+      if (docId && prevId && prevId === docId) return null;
+      if (docNo && prevNo && prevNo === docNo && prevType === docType) return null;
+      return prev;
+    });
+
     try {
-      await gasApi.deleteDoc(docId, docType, docNo, firmId);
-      await loadBootstrapData();
+      const res = await gasApi.deleteDoc(docId, docType, docNo, firmId);
+      if (res && res.remainingDocs) {
+        setDocs(res.remainingDocs);
+      }
+      if (res && res.settings) {
+        setSettings(res.settings);
+      }
       showToast(`${docType} #${docNo} deleted successfully. Numbering rolled back (LIFO).`, 'success');
     } catch (err: any) {
+      console.error('Error during deleteDoc:', err);
       showToast(err.message || 'Failed to delete document', 'error');
+      await loadBootstrapData();
       throw err;
     }
   };
