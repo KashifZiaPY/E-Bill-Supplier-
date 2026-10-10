@@ -142,7 +142,7 @@ export const HomeScreen: React.FC<Props> = ({
   onDeleteClient,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS' | 'REPORTS' | 'VISITORS'>('DOCUMENTS');
+  const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS' | 'REPORTS'>('DOCUMENTS');
   const [docFilter, setDocFilter] = useState<'ALL' | 'BILL' | 'QUOTATION'>('ALL');
   const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
   const [drillDownClient, setDrillDownClient] = useState<string | null>(null);
@@ -154,10 +154,13 @@ export const HomeScreen: React.FC<Props> = ({
   const [isLifoModalOpen, setIsLifoModalOpen] = useState(false);
   const [isDeletingLifo, setIsDeletingLifo] = useState(false);
 
-  // Lazy-load the visitor log the first time the VISITORS tab opens.
+  // Visitors modal (opened from the top-header shortcut).
+  const [visitorsOpen, setVisitorsOpen] = useState(false);
+
+  // Lazy-load the visitor log the first time the modal opens.
   useEffect(() => {
-    if (activeTab === 'VISITORS' && !visitsLoaded && !visitsLoading) onLoadVisits();
-  }, [activeTab, visitsLoaded, visitsLoading, onLoadVisits]);
+    if (visitorsOpen && !visitsLoaded && !visitsLoading) onLoadVisits();
+  }, [visitorsOpen, visitsLoaded, visitsLoading, onLoadVisits]);
 
   // "New" device heuristic: the most common IP is assumed to be the owner's;
   // any other IP gets flagged so an unfamiliar login stands out.
@@ -182,15 +185,11 @@ export const HomeScreen: React.FC<Props> = ({
     return { total: visits.length, devices: ips.size, last24h };
   }, [visits]);
 
-  // Header shortcut: jump to the Visitors tab and scroll it into view.
-  const workspaceRef = useRef<HTMLDivElement>(null);
+  // Header shortcut: open the Visitors modal.
   const hasNewVisitor = !!topVisitIp && visits.some((v) => !!v.ip && v.ip !== topVisitIp);
   const handleOpenVisitors = () => {
     if (!visitsLoaded && !visitsLoading) onLoadVisits();
-    setActiveTab('VISITORS');
-    requestAnimationFrame(() => {
-      workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    setVisitorsOpen(true);
   };
 
   const handleOpenLifoDelete = (doc: DocumentRecord) => {
@@ -771,14 +770,13 @@ export const HomeScreen: React.FC<Props> = ({
         )}
 
         {/* Workspace */}
-        <div ref={workspaceRef} className="corp-card overflow-hidden scroll-mt-28">
+        <div className="corp-card overflow-hidden">
           <div className="p-4 border-b border-line flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-1.5 bg-paper p-1 rounded-xl self-start">
               {([
                 ['DOCUMENTS', FileText, `Documents`],
                 ['CLIENTS', Users, `Clients (${clients.length})`],
                 ['REPORTS', BarChart3, `Reports (${clientReportSummaries.length})`],
-                ['VISITORS', Eye, visitsLoaded ? `Visitors (${visits.length})` : `Visitors`],
               ] as const).map(([tab, Icon, label]) => (
                 <button
                   key={tab}
@@ -1177,8 +1175,16 @@ export const HomeScreen: React.FC<Props> = ({
             </div>
           )}
 
-          {/* VISITORS */}
-          {activeTab === 'VISITORS' && (
+          {/* VISITORS MODAL (opened from the top-header shortcut) */}
+          {visitorsOpen && (
+            <div
+              className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-[2px]"
+              onClick={() => setVisitorsOpen(false)}
+            >
+              <div
+                className="corp-card w-full max-w-2xl max-h-[88vh] overflow-y-auto overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
             <div>
               <div className={`px-4 sm:px-5 py-4 text-white flex flex-col md:flex-row md:items-center justify-between gap-3 ${firmTheme.header}`}>
                 <div className="flex items-center gap-3">
@@ -1190,14 +1196,23 @@ export const HomeScreen: React.FC<Props> = ({
                     <p className="text-xs text-white/70">Every PIN login — location, device &amp; time</p>
                   </div>
                 </div>
-                <button
-                  onClick={onLoadVisits}
-                  disabled={visitsLoading}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 border border-white/20 text-white transition self-start md:self-auto disabled:opacity-50 cursor-pointer"
-                >
-                  <RefreshCw className={`w-4 h-4 ${visitsLoading ? 'animate-spin' : ''}`} />
-                  <span>Refresh</span>
-                </button>
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                  <button
+                    onClick={onLoadVisits}
+                    disabled={visitsLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 border border-white/20 text-white transition disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${visitsLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                  <button
+                    onClick={() => setVisitorsOpen(false)}
+                    className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition"
+                    aria-label="Close visitor log"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {visitsLoading && !visitsLoaded ? (
@@ -1259,7 +1274,9 @@ export const HomeScreen: React.FC<Props> = ({
                   </div>
                 </>
               )}
+              </div>
             </div>
+          </div>
           )}
         </div>
       </main>

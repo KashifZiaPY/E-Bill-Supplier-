@@ -126,7 +126,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.7',
+    version: '2.6.8',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -183,7 +183,33 @@ function findDocByNumber(ss, firmId, docType, num) {
   return null;
 }
 
+/**
+ * Multi-user safety: number assignment, counter updates and deletes are
+ * serialized with the Apps Script script lock. Without this, two people
+ * saving at the same moment could read the same counter and be issued the
+ * SAME bill number (duplicate tax documents). The lock makes the second
+ * save wait, then it sees the updated counter and gets the next number.
+ * logVisit is intentionally NOT locked (append-only, must never block logins).
+ */
+function withScriptLock(fn) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (e) {
+    throw new Error('The server is busy — please retry in a moment.');
+  }
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function handleSaveDoc(ss, payload) {
+  return withScriptLock(function () { return handleSaveDocLocked(ss, payload); });
+}
+
+function handleSaveDocLocked(ss, payload) {
   // Accept every payload shape the clients send: { docData }, { doc }, or the doc itself.
   var docData = payload.docData || payload.doc || payload;
   var docId = docData.docId || docData.DocID || ('doc-' + Date.now());
@@ -243,6 +269,13 @@ function handleSaveDoc(ss, payload) {
     }
   }
 
+  // MULTI-USER GUARDS (run inside the script lock):
+  // (a) Editing a bill that another user just deleted -> refuse instead of
+  //     silently resurrecting it as a new row.
+  if (docData.isEdit && !isDraft && rowIndexToUpdate <= 0) {
+    throw new Error('This bill was deleted by another user and can no longer be saved. Please start a new bill.');
+  }
+
   // BACKEND-AUTHORITATIVE NUMBERING (duplicate-proof):
   // The frontend suggests a number from possibly stale state (stale tab, race),
   // so for NEW documents the backend assigns the final number itself:
@@ -255,6 +288,16 @@ function handleSaveDoc(ss, payload) {
   if (rowIndexToUpdate > 0 && !isDraft) {
     var existingStatus = String(data[rowIndexToUpdate - 1][18] || 'Active').toUpperCase();
     if (existingStatus === 'DRAFT') convertingDraft = true;
+  }
+
+  // (b) Stale-edit protection: if someone else saved a newer version after
+  //     this form was opened, refuse rather than wiping their changes.
+  //     Timestamps are ISO-8601 UTC strings, which compare lexicographically.
+  if (!isDraft && !convertingDraft && rowIndexToUpdate > 0 && docData.loadedAt) {
+    var currentUpdatedAt = String(data[rowIndexToUpdate - 1][19] || '');
+    if (currentUpdatedAt && String(docData.loadedAt) < currentUpdatedAt) {
+      throw new Error('This bill was changed by another user after you opened it. Reload it before saving so you do not overwrite their changes.');
+    }
   }
 
   var docNoWasCorrected = false;
@@ -449,6 +492,10 @@ function handleCancelDoc(ss, payload) {
 }
 
 function handleDeleteDoc(ss, payload) {
+  return withScriptLock(function () { return handleDeleteDocLocked(ss, payload); });
+}
+
+function handleDeleteDocLocked(ss, payload) {
   var targetDocId = String(payload.docId || '').trim();
   var targetDocNo = String(payload.docNo || '').trim();
   var targetDocType = String(payload.docType || 'BILL').toUpperCase();
@@ -991,7 +1038,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.7 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.8 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing

@@ -362,6 +362,10 @@ export const EntryFormScreen: React.FC<Props> = ({
     return {
     docId: draftIdRef.current || initialDoc?.docId || initialDoc?.DocID,
     DocID: initialDoc?.docId || initialDoc?.DocID,
+    // Multi-user guards: mark edits of issued bills + the sheet timestamp the
+    // form was opened with, so the backend can refuse stale/deleted edits.
+    isEdit: !isDraftContext && !!(initialDoc?.docId || (initialDoc as any)?.DocID),
+    loadedAt: !isDraftContext ? ((initialDoc as any)?.updatedAt || undefined) : undefined,
     firmId: activeFirm.id,
     firmName: activeFirm.name,
     type: docType,
