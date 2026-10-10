@@ -44,6 +44,7 @@ import {
 
 interface Props {
   docs: DocumentRecord[];
+  drafts: DocumentRecord[];
   settings: SupplierSettings;
   clients: SavedClient[];
   onRetryConnection?: () => void;
@@ -53,6 +54,8 @@ interface Props {
   onNewQuotation: () => void;
   onOpenSettings: () => void;
   onSelectDoc: (doc: DocumentRecord) => void;
+  onResumeDraft: (draft: DocumentRecord) => void;
+  onDiscardDraft: (draft: DocumentRecord) => void;
   onEditDoc: (doc: DocumentRecord) => void;
   onDuplicateDoc: (doc: DocumentRecord) => void;
   onMakeBillFromQuotation: (doc: DocumentRecord) => void;
@@ -68,6 +71,7 @@ interface Props {
 
 export const HomeScreen: React.FC<Props> = ({
   docs,
+  drafts,
   settings,
   clients,
   onRetryConnection,
@@ -77,6 +81,8 @@ export const HomeScreen: React.FC<Props> = ({
   onNewQuotation,
   onOpenSettings,
   onSelectDoc,
+  onResumeDraft,
+  onDiscardDraft,
   onEditDoc,
   onDuplicateDoc,
   onMakeBillFromQuotation,
@@ -604,6 +610,60 @@ export const HomeScreen: React.FC<Props> = ({
             </div>
           </button>
         </div>
+
+        {/* Unfinished drafts (server-side, not yet issued) */}
+        {drafts.length > 0 && (
+          <div className="corp-card p-4 border-l-4 !border-l-gold-500">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-[14px] font-extrabold tracking-tight text-ink-900">
+                  Unfinished Drafts
+                </div>
+                <p className="text-[11px] text-ink-500 font-medium">
+                  Auto-saved to your sheet — resume to finish, or discard.
+                </p>
+              </div>
+              <span className="corp-chip bg-gold-500/15 text-gold-700 border border-gold-500/40">
+                {drafts.length} pending
+              </span>
+            </div>
+            <div className="space-y-2">
+              {drafts.map((d) => {
+                const dId = String(d.docId || (d as any).DocID || '');
+                const dType = String(d.type || (d as any).Type || 'BILL').toUpperCase();
+                const dClient = String(d.clientName || (d as any).ClientName || 'No client yet');
+                const dFirm = String(d.firmName || (d as any).FirmName || '');
+                const dItems = Array.isArray(d.items || (d as any).Items) ? (d.items || (d as any).Items).length : 0;
+                const dTotal = Number(d.grandTotal || (d as any).GrandTotal || 0);
+                const dWhen = (d as any).updatedAt
+                  ? new Date((d as any).updatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                  : '';
+                return (
+                  <div key={dId} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-line bg-paper/60">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-bold text-ink-900 truncate">
+                        {dType === 'BILL' ? 'Bill' : 'Quotation'} draft · {dClient}
+                      </div>
+                      <div className="text-[11px] text-ink-400 truncate">
+                        {dFirm && `${dFirm} · `}{dItems} item{dItems === 1 ? '' : 's'}
+                        {dTotal > 0 && ` · ${formatCurrency(dTotal)}`}
+                        {dWhen && ` · ${dWhen}`}
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button onClick={() => onResumeDraft(d)} className="corp-btn-primary !py-1.5 text-[11px] cursor-pointer">
+                        Resume
+                      </button>
+                      <button onClick={() => onDiscardDraft(d)} className="corp-btn-ghost !py-1.5 text-[11px] cursor-pointer">
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Workspace */}
         <div className="corp-card overflow-hidden">

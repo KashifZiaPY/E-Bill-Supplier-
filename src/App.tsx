@@ -551,8 +551,11 @@ export default function App() {
       {currentScreen === 'HOME' && (
         <HomeScreen
           docs={docs}
+          drafts={drafts}
           settings={settings}
           clients={clients}
+          onResumeDraft={handleResumeDraft}
+          onDiscardDraft={handleDiscardDraft}
           onRetryConnection={() => { void loadBootstrapData(); }}
           deletePinRequired={deletePinRequired}
           activeFirmId={activeFirmId}
