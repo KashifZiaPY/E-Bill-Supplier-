@@ -88,6 +88,10 @@ function doPost(e) {
         var discardResult = handleDiscardDraft(ss, payload);
         return createJsonResponse({ ok: true, data: discardResult });
 
+      case 'logVisit':
+        var visitResult = handleLogVisit(ss, payload);
+        return createJsonResponse({ ok: true, data: visitResult });
+
       case 'cancelDoc':
         var cancelResult = handleCancelDoc(ss, payload);
         return createJsonResponse({ ok: true, data: cancelResult });
@@ -119,7 +123,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.5',
+    version: '2.6.6',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -360,6 +364,36 @@ function handleDiscardDraft(ss, payload) {
     if (String(itemsData[r][0]).trim() === docId) itemsSheet.deleteRow(r + 1);
   }
   return { ok: true, docId: docId, discarded: rowIndex > 0 };
+}
+
+/**
+ * Login audit log. Called by the Vercel proxy (after a successful bootstrap
+ * = one row per PIN login). Records when, from where (country/city from
+ * Vercel edge headers) and on what device — so the owner can see if anyone
+ * besides the expected people is opening the app. The Visits tab is created
+ * on first use and trimmed to the last 500 rows. Only the first three IP
+ * octets are stored (privacy: enough to tell devices apart).
+ */
+function handleLogVisit(ss, payload) {
+  var sheet = ss.getSheetByName('Visits');
+  if (!sheet) {
+    sheet = ss.insertSheet('Visits');
+    sheet.appendRow(['Timestamp', 'Event', 'Country', 'Region', 'City', 'IP', 'Device']);
+    sheet.setFrozenRows(1);
+  }
+  sheet.appendRow([
+    new Date().toISOString(),
+    String((payload && payload.event) || 'login'),
+    String((payload && payload.country) || ''),
+    String((payload && payload.region) || ''),
+    String((payload && payload.city) || ''),
+    String((payload && payload.ip) || ''),
+    String((payload && payload.device) || '')
+  ]);
+  // Trim to the most recent 500 visits so the tab stays light.
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 501) sheet.deleteRows(2, lastRow - 501);
+  return { ok: true };
 }
 
 /**
@@ -928,7 +962,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.5 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.6 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing

@@ -209,6 +209,46 @@ export default async function handler(req: any, res: any) {
       jsonResult = { ok: gasResponse.ok, data: responseText };
     }
 
+    // Login audit: one Visits row per successful bootstrap (i.e. per PIN
+    // login). Fire-and-forget with a timeout race so a slow log never delays
+    // the login response. Geo/IP come from Vercel edge headers; only the
+    // first three IP octets are stored.
+    if (bodyData && bodyData.action === 'bootstrap' && jsonResult && jsonResult.ok) {
+      try {
+        const fwdFor = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+        const ipParts = fwdFor.split('.');
+        const shortIp = ipParts.length === 4 ? ipParts.slice(0, 3).join('.') + '.x' : (fwdFor ? fwdFor.substring(0, 24) : '');
+        const ua = String(req.headers['user-agent'] || '');
+        const isMobile = /mobile|android|iphone|ipad/i.test(ua);
+        let browser = 'Other';
+        if (/edg/i.test(ua)) browser = 'Edge';
+        else if (/chrome/i.test(ua)) browser = 'Chrome';
+        else if (/safari/i.test(ua)) browser = 'Safari';
+        else if (/firefox/i.test(ua)) browser = 'Firefox';
+        const visitPayload = {
+          action: 'logVisit',
+          payload: {
+            event: 'login',
+            country: String(req.headers['x-vercel-ip-country'] || ''),
+            region: String(req.headers['x-vercel-ip-country-region'] || ''),
+            city: (() => { try { return decodeURIComponent(String(req.headers['x-vercel-ip-city'] || '')); } catch { return ''; } })(),
+            ip: shortIp,
+            device: `${isMobile ? 'Mobile' : 'Desktop'} · ${browser}`,
+          },
+          key: gasApiKey || '',
+        };
+        const logReq = fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(visitPayload),
+          redirect: 'follow',
+        }).catch(() => null);
+        await Promise.race([logReq, new Promise((r) => setTimeout(r, 2500))]);
+      } catch {
+        // Visit logging must never break login.
+      }
+    }
+
     return res.status(gasResponse.status || 200).json(jsonResult);
   } catch (error: any) {
     console.error('Error forwarding to GAS:', error);
