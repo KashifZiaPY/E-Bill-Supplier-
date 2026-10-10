@@ -48,7 +48,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     firmObj?.styleTheme === 'MODERN_CORPORATE';
 
   const firmName = doc.firmName || firmObj?.name || settings.supplierName || 'ANWAR TRADERS';
-  const firmTagline = firmObj?.tagline || settings.supplierTagline || (isHashirStyle ? 'Govt. Contractor & General Order Supplier' : 'General Order Suppliers & Govt Contractors');
+  const firmTagline = firmObj?.tagline || settings.supplierTagline || (isHashirStyle ? 'Govt. Contractor & General Order Supplier' : 'Govt. Contractor & General Order Supplier');
   const firmAddress = firmObj?.address || settings.supplierAddress;
   const firmPhone = firmObj?.phone || settings.supplierPhone;
   const firmNTN = firmObj?.ntn || settings.supplierNTN;

@@ -74,7 +74,7 @@ export const EntryFormScreen: React.FC<Props> = ({
     {
       id: 'firm-anwar-traders',
       name: settings.supplierName || 'Anwar Traders',
-      tagline: settings.supplierTagline || 'General Order Suppliers & Govt Contractors',
+      tagline: settings.supplierTagline || 'Govt. Contractor & General Order Supplier',
       address: settings.supplierAddress,
       phone: settings.supplierPhone,
       ntn: settings.supplierNTN,

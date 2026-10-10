@@ -506,7 +506,7 @@ function handleSaveSettings(ss, payload) {
     settings.ownerName || 'MIAN FARHAN ANWAR',
     settings.activeFirmId || 'firm-anwar-traders',
     settings.supplierName || 'Anwar Traders',
-    settings.supplierTagline || 'General Order Suppliers & Govt Contractors',
+    settings.supplierTagline || 'Govt. Contractor & General Order Supplier',
     settings.supplierAddress || '',
     settings.supplierPhone || '',
     settings.supplierNTN || '',
@@ -547,7 +547,7 @@ function loadSettings(ss) {
     ownerName: row[0] || 'MIAN FARHAN ANWAR',
     activeFirmId: row[1] || 'firm-anwar-traders',
     supplierName: row[2] || 'Anwar Traders',
-    supplierTagline: row[3] || 'General Order Suppliers & Govt Contractors',
+    supplierTagline: row[3] || 'Govt. Contractor & General Order Supplier',
     supplierAddress: row[4] || '',
     supplierPhone: row[5] || '',
     supplierNTN: row[6] || '',
@@ -802,12 +802,12 @@ function initSheetHeaders(sheet, name) {
       {
         id: 'firm-anwar-traders',
         name: 'Anwar Traders',
-        tagline: 'General Order Suppliers & Govt Contractors',
-        address: 'Suit # 14, 2nd Floor, Al-Rehman Centre, Bank Road, Rawalpindi',
-        phone: '0300-5123456 / 051-5551234',
-        ntn: '1428392-7',
-        gst: '07-01-9876-543-21',
-        vendorNo: 'V-40892',
+        tagline: 'Govt. Contractor & General Order Supplier',
+        address: 'Mohalla Punj Peer, Khawaja Street, Jhang Road, Faisalabad.',
+        phone: '0300-6642775',
+        ntn: '4821279-6',
+        gst: '3277876217254',
+        vendorNo: '31086205',
         gstRate: 0.18,
         pstRate: 0.16,
         letterheadTop: 2.5,
@@ -836,10 +836,10 @@ function initSheetHeaders(sheet, name) {
     ];
     sheet.appendRow([
       'MIAN FARHAN ANWAR', 'firm-anwar-traders', 'Anwar Traders',
-      'General Order Suppliers & Govt Contractors',
-      'Suit # 14, 2nd Floor, Al-Rehman Centre, Bank Road, Rawalpindi',
-      '0300-5123456 / 051-5551234', '1428392-7', '07-01-9876-543-21',
-      'V-40892', 0.18, 0.16, 2.5, 1.5, '101', 'Q-201',
+      'Govt. Contractor & General Order Supplier',
+      'Mohalla Punj Peer, Khawaja Street, Jhang Road, Faisalabad.',
+      '0300-6642775', '4821279-6', '3277876217254',
+      '31086205', 0.18, 0.16, 2.5, 1.5, '101', 'Q-201',
       JSON.stringify(defaultFirms)
     ]);
   } else if (name === 'Clients') {
@@ -850,7 +850,7 @@ function initSheetHeaders(sheet, name) {
       'Director General Health Services Punjab',
       '24-Cooper Road, Lahore',
       '9010203-4',
-      '07-01-9876-543-21',
+      '3277876217254',
       new Date().toISOString()
     ]);
   } else if (name === 'Documents') {
