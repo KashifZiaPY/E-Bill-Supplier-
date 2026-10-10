@@ -236,8 +236,16 @@ export default function App() {
       if (ok) {
         isAuthenticatedRef.current = true;
         setIsAuthenticated(true);
-        // Fresh presence session for this login (one per browser tab).
-        sessionIdRef.current = 'sess-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        // Presence session: reuse the tab's session across refreshes so a
+        // reload doesn't mint a duplicate "online" row. sessionStorage is
+        // per-tab: two genuinely open tabs still count as two sessions.
+        let sid = '';
+        try { sid = sessionStorage.getItem('ebill_sid') || ''; } catch { /* ignore */ }
+        if (!sid) {
+          sid = 'sess-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+          try { sessionStorage.setItem('ebill_sid', sid); } catch { /* ignore */ }
+        }
+        sessionIdRef.current = sid;
         showToast(`Welcome to ${settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Portal`, 'success');
         const bootData: any = await loadBootstrapData();
         try {
@@ -265,6 +273,7 @@ export default function App() {
     // End the presence session immediately so "online now" drops at once.
     if (sessionIdRef.current) void gasApi.heartbeat(sessionIdRef.current, true);
     sessionIdRef.current = '';
+    try { sessionStorage.removeItem('ebill_sid'); } catch { /* ignore */ }
     gasApi.clearPin();
     clearDraftState();
     isAuthenticatedRef.current = false;
