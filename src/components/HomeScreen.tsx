@@ -182,6 +182,17 @@ export const HomeScreen: React.FC<Props> = ({
     return { total: visits.length, devices: ips.size, last24h };
   }, [visits]);
 
+  // Header shortcut: jump to the Visitors tab and scroll it into view.
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const hasNewVisitor = !!topVisitIp && visits.some((v) => !!v.ip && v.ip !== topVisitIp);
+  const handleOpenVisitors = () => {
+    if (!visitsLoaded && !visitsLoading) onLoadVisits();
+    setActiveTab('VISITORS');
+    requestAnimationFrame(() => {
+      workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const handleOpenLifoDelete = (doc: DocumentRecord) => {
     setDocToDeleteLifo(doc);
     setLifoMode('delete');
@@ -557,6 +568,21 @@ export const HomeScreen: React.FC<Props> = ({
             </button>
 
             <button
+              onClick={handleOpenVisitors}
+              className="relative inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 border border-white/20 text-white transition cursor-pointer"
+              title="Visitor logins — who opened the app"
+            >
+              <Eye className="w-4 h-4" />
+              <span className="hidden sm:inline">Visitors</span>
+              {visitsLoaded && visits.length > 0 && (
+                <span className="corp-chip bg-gold-500 text-navy-950 !px-1.5 !py-0 text-[10px]">{visits.length}</span>
+              )}
+              {hasNewVisitor && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-white/30" title="Unfamiliar login detected" />
+              )}
+            </button>
+
+            <button
               onClick={onRefresh}
               className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition"
               title="Refresh records"
@@ -745,7 +771,7 @@ export const HomeScreen: React.FC<Props> = ({
         )}
 
         {/* Workspace */}
-        <div className="corp-card overflow-hidden">
+        <div ref={workspaceRef} className="corp-card overflow-hidden scroll-mt-28">
           <div className="p-4 border-b border-line flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-1.5 bg-paper p-1 rounded-xl self-start">
               {([

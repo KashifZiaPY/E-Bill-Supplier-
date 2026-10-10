@@ -219,6 +219,10 @@ export default function App() {
         // Offer to resume unfinished work recovered from server-side drafts.
         const freshDrafts = (bootData?.drafts || []) as DocumentRecord[];
         if (freshDrafts.length > 0) setResumeCandidates(freshDrafts);
+        // Preload the visitor log so the header badge is live from the start.
+        // (The proxy writes this login's row before the bootstrap response
+        // returns, so the count already includes the current login.)
+        void loadVisits();
       } else {
         setPinError('Incorrect PIN. Please enter the valid 4-digit PIN.');
       }
