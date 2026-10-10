@@ -113,7 +113,12 @@ export default function App() {
   // Draft autosave: the entry form reports its in-progress document here on
   // every change (ref only, no re-render); we persist it to the sheet as a
   // Draft after 8s of quiet, and flush it on page hide/close.
-  const persistDraft = useCallback(async () => {
+  // Epoch guard: a final save bumps the epoch; a stale timer from before the
+  // save must not fire afterwards (Apps Script calls are slow, so the 8s
+  // timer can easily fire while the final save is still in flight).
+  const draftEpochRef = useRef(0);
+  const persistDraft = useCallback(async (epoch: number) => {
+    if (epoch !== draftEpochRef.current) return; // superseded by a final save
     const doc = draftPayloadRef.current;
     if (!doc || !isAuthenticatedRef.current || !gasApi.getPin()) return;
     try {
@@ -127,7 +132,8 @@ export default function App() {
     draftPayloadRef.current = doc;
     if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
     if (!doc) return;
-    draftTimerRef.current = window.setTimeout(() => { void persistDraft(); }, 8000);
+    const epoch = draftEpochRef.current;
+    draftTimerRef.current = window.setTimeout(() => { void persistDraft(epoch); }, 8000);
   }, [persistDraft]);
 
   useEffect(() => {
@@ -142,6 +148,7 @@ export default function App() {
 
   const clearDraftState = useCallback(() => {
     draftPayloadRef.current = null;
+    draftEpochRef.current += 1; // invalidate any pending/in-flight draft timer
     if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
     draftTimerRef.current = null;
   }, []);
@@ -451,6 +458,9 @@ export default function App() {
 
   const handleSaveDoc = async (docData: any, previewAfter: boolean) => {
     setIsSaving(true);
+    // Cancel draft autosave BEFORE the save call: the 8s timer can fire while
+    // this (slow) request is in flight, and its Draft write must not land after.
+    clearDraftState();
     try {
       const res = await gasApi.saveDoc(docData);
       if (res && res.ok) {
@@ -461,7 +471,6 @@ export default function App() {
             : `Document #${res.docNo} saved successfully!`,
           corrected ? 'info' : 'success'
         );
-        clearDraftState(); // the draft row just became the real document
         await loadBootstrapData();
 
         if (previewAfter) {

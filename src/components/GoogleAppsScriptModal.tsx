@@ -119,7 +119,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.4',
+    version: '2.6.5',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -221,6 +221,18 @@ function handleSaveDoc(ss, payload) {
     if (String(data[i][0]).trim() === docId) {
       rowIndexToUpdate = i + 1;
       break;
+    }
+  }
+
+  // INVARIANT: a draft autosave must NEVER downgrade an already-issued document.
+  // Race: the 8s draft timer can fire while the final save is still in flight
+  // (Apps Script calls take seconds); last-write-wins would otherwise flip the
+  // issued bill back to Draft. The frontend cancels its timer on save, but a
+  // request already in flight cannot be recalled - so the backend is the arbiter.
+  if (rowIndexToUpdate > 0 && isDraft) {
+    var existingStatus = String(data[rowIndexToUpdate - 1][18] || 'Active').toUpperCase();
+    if (existingStatus !== 'DRAFT') {
+      return { ok: true, docId: docId, docNo: String(data[rowIndexToUpdate - 1][1] || ''), draftSuperseded: true };
     }
   }
 
@@ -916,7 +928,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.4 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.5 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing

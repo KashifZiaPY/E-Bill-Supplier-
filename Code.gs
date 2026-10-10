@@ -102,7 +102,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.4',
+    version: '2.6.5',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -204,6 +204,18 @@ function handleSaveDoc(ss, payload) {
     if (String(data[i][0]).trim() === docId) {
       rowIndexToUpdate = i + 1;
       break;
+    }
+  }
+
+  // INVARIANT: a draft autosave must NEVER downgrade an already-issued document.
+  // Race: the 8s draft timer can fire while the final save is still in flight
+  // (Apps Script calls take seconds); last-write-wins would otherwise flip the
+  // issued bill back to Draft. The frontend cancels its timer on save, but a
+  // request already in flight cannot be recalled - so the backend is the arbiter.
+  if (rowIndexToUpdate > 0 && isDraft) {
+    var existingStatus = String(data[rowIndexToUpdate - 1][18] || 'Active').toUpperCase();
+    if (existingStatus !== 'DRAFT') {
+      return { ok: true, docId: docId, docNo: String(data[rowIndexToUpdate - 1][1] || ''), draftSuperseded: true };
     }
   }
 
