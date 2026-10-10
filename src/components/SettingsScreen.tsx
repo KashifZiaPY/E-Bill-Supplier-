@@ -355,7 +355,7 @@ export const SettingsScreen: React.FC<Props> = ({
             </button>
             <div className="min-w-0">
               <h1 className="text-[17px] font-extrabold tracking-tight truncate">Settings &amp; Profiles</h1>
-              <p className="text-xs text-navy-200 truncate">{formData.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Systems</p>
+              <p className="text-xs text-navy-200 truncate">e-billing system developed by MKZ v1.0</p>
             </div>
           </div>
           <button onClick={handleSave} disabled={isSaving} className="corp-btn-gold shrink-0">
@@ -709,7 +709,7 @@ export const SettingsScreen: React.FC<Props> = ({
       </main>
 
       <footer className="py-4 text-center text-[11px] text-ink-400 font-medium">
-        {formData.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Systems
+        e-billing system developed by MKZ v1.0
       </footer>
 
       <GoogleAppsScriptModal isOpen={isScriptModalOpen} onClose={() => setIsScriptModalOpen(false)} />

@@ -1038,7 +1038,7 @@ export const HomeScreen: React.FC<Props> = ({
       </div>
 
       <footer className="py-4 pb-24 sm:pb-5 text-center text-[11px] text-ink-400 font-medium">
-        {settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Systems
+        e-billing system developed by MKZ v1.0
       </footer>
 
       {/* Client ledger drill-down */}

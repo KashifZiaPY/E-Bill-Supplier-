@@ -183,7 +183,7 @@ export const PinScreen: React.FC<Props> = ({ onSuccess, isLoading, errorMessage 
       </div>
 
       <p className="relative mt-6 text-[11px] font-medium tracking-wide text-navy-200/70">
-        MIAN FARHAN ANWAR Enterprise Systems
+        e-billing system developed by MKZ v1.0
       </p>
     </div>
   );
