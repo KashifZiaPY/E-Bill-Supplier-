@@ -17,14 +17,13 @@
  */
 
 // 1. WEB APP ENTRY POINT: POST REQUEST HANDLER
+// NOTE: there is intentionally NO global script lock here. A global lock
+// serialized every request (including reads and heartbeats) behind a 10s
+// wait, so with 2+ tabs open, logins started failing with 429 "Server busy".
+// Write-safety is handled with targeted locks instead: handleSaveDoc and
+// handleDeleteDoc (the only read-modify-write operations on shared counters)
+// serialize via withScriptLock. All other writes are atomic single-row ops.
 function doPost(e) {
-  var lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(10000); // 10 second concurrency lock
-  } catch (err) {
-    return createJsonResponse({ ok: false, error: 'Server busy. Please retry.' }, 429);
-  }
-
   try {
     var rawPostData = e && e.postData && e.postData.contents ? e.postData.contents : '{}';
     var requestData = {};
@@ -115,7 +114,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.9',
+    version: '2.6.10',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
