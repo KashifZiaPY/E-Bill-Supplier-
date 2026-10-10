@@ -92,6 +92,9 @@ function doPost(e) {
         var visitResult = handleLogVisit(ss, payload);
         return createJsonResponse({ ok: true, data: visitResult });
 
+      case 'getVisits':
+        return createJsonResponse({ ok: true, data: handleGetVisits(ss, payload) });
+
       case 'cancelDoc':
         var cancelResult = handleCancelDoc(ss, payload);
         return createJsonResponse({ ok: true, data: cancelResult });
@@ -123,7 +126,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.6',
+    version: '2.6.7',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -394,6 +397,32 @@ function handleLogVisit(ss, payload) {
   var lastRow = sheet.getLastRow();
   if (lastRow > 501) sheet.deleteRows(2, lastRow - 501);
   return { ok: true };
+}
+
+/**
+ * Returns the most recent visit rows (newest first) for the in-app
+ * Visitors tab. Limit defaults to 50.
+ */
+function handleGetVisits(ss, payload) {
+  var limit = Math.min(Math.max(Number((payload && payload.limit) || 50, 1), 1), 200);
+  var sheet = ss.getSheetByName('Visits');
+  if (!sheet || sheet.getLastRow() < 2) return { visits: [] };
+  var lastRow = sheet.getLastRow();
+  var startRow = Math.max(2, lastRow - limit + 1);
+  var values = sheet.getRange(startRow, 1, lastRow - startRow + 1, 7).getValues();
+  var visits = [];
+  for (var i = values.length - 1; i >= 0; i--) {
+    visits.push({
+      timestamp: String(values[i][0] || ''),
+      event: String(values[i][1] || ''),
+      country: String(values[i][2] || ''),
+      region: String(values[i][3] || ''),
+      city: String(values[i][4] || ''),
+      ip: String(values[i][5] || ''),
+      device: String(values[i][6] || '')
+    });
+  }
+  return { visits: visits };
 }
 
 /**
@@ -962,7 +991,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.6 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.7 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing

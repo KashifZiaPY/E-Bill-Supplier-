@@ -741,6 +741,23 @@ class GasClient {
     return { ok: true };
   }
 
+  /**
+   * Reads the login-audit rows for the in-app Visitors tab (newest first).
+   * Returns an empty list when the backend is older than v2.6.7.
+   */
+  async getVisits(limit = 50): Promise<Array<{
+    timestamp: string; event: string; country: string; region: string;
+    city: string; ip: string; device: string;
+  }>> {
+    try {
+      const res: any = await this.mutateOrThrow('getVisits', { limit });
+      const visits = res?.visits || res?.data?.visits || [];
+      return Array.isArray(visits) ? visits : [];
+    } catch {
+      return [];
+    }
+  }
+
   async cancelDoc(docId: string): Promise<{ ok: boolean }> {
     await this.mutateOrThrow('cancelDoc', { docId });
     return { ok: true };

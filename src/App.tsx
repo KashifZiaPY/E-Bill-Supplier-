@@ -13,7 +13,7 @@ import type {
 } from './types/billing';
 import { DEFAULT_SETTINGS, gasApi, DeletePinRequiredError } from './api/gasClient';
 import { PinScreen } from './components/PinScreen';
-import { HomeScreen } from './components/HomeScreen';
+import { HomeScreen, type VisitRow } from './components/HomeScreen';
 import { EntryFormScreen } from './components/EntryFormScreen';
 import { PreviewScreen } from './components/PreviewScreen';
 import { SettingsScreen } from './components/SettingsScreen';
@@ -42,6 +42,23 @@ export default function App() {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [connectionError, setConnectionError] = useState<string>('');
   const [drafts, setDrafts] = useState<DocumentRecord[]>([]);
+  const [visits, setVisits] = useState<VisitRow[]>([]);
+  const [visitsLoading, setVisitsLoading] = useState(false);
+  const [visitsLoaded, setVisitsLoaded] = useState(false);
+
+  const loadVisits = async () => {
+    if (visitsLoading) return;
+    setVisitsLoading(true);
+    try {
+      const v = await gasApi.getVisits(50);
+      setVisits(v);
+      setVisitsLoaded(true);
+    } catch {
+      setVisitsLoaded(true);
+    } finally {
+      setVisitsLoading(false);
+    }
+  };
   const [resumeCandidates, setResumeCandidates] = useState<DocumentRecord[] | null>(null);
   const [deletePinRequired, setDeletePinRequired] = useState<boolean>(false);
 
@@ -219,6 +236,8 @@ export default function App() {
     setIsAuthenticated(false);
     setResumeCandidates(null);
     setDrafts([]);
+    setVisits([]);
+    setVisitsLoaded(false);
     setCurrentScreen('HOME');
     showToast('App locked successfully', 'info');
   };
@@ -565,6 +584,10 @@ export default function App() {
           clients={clients}
           onResumeDraft={handleResumeDraft}
           onDiscardDraft={handleDiscardDraft}
+          visits={visits}
+          visitsLoading={visitsLoading}
+          visitsLoaded={visitsLoaded}
+          onLoadVisits={() => { void loadVisits(); }}
           onRetryConnection={() => { void loadBootstrapData(); }}
           deletePinRequired={deletePinRequired}
           activeFirmId={activeFirmId}

@@ -31,6 +31,9 @@ import {
   ShieldAlert,
   Eye,
   AlertTriangle,
+  Smartphone,
+  Monitor,
+  Globe,
 } from 'lucide-react';
 import type { DocumentRecord, SavedClient, SupplierSettings } from '../types/billing';
 import { formatCurrency, formatDateDisplay, safeNormalizeItems } from '../utils/formatters';
@@ -44,9 +47,46 @@ import {
   type ClientReportSummary,
 } from '../utils/excelExport';
 
+export interface VisitRow {
+  timestamp: string;
+  event: string;
+  country: string;
+  region: string;
+  city: string;
+  ip: string;
+  device: string;
+}
+
+function visitTimeAgo(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
+function visitFullDate(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  try {
+    return new Date(t).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
 interface Props {
   docs: DocumentRecord[];
   drafts: DocumentRecord[];
+  visits: VisitRow[];
+  visitsLoading: boolean;
+  visitsLoaded: boolean;
+  onLoadVisits: () => void;
   settings: SupplierSettings;
   clients: SavedClient[];
   onRetryConnection?: () => void;
@@ -85,6 +125,10 @@ export const HomeScreen: React.FC<Props> = ({
   onSelectDoc,
   onResumeDraft,
   onDiscardDraft,
+  onLoadVisits,
+  visits,
+  visitsLoading,
+  visitsLoaded,
   onEditDoc,
   onDuplicateDoc,
   onMakeBillFromQuotation,
@@ -98,7 +142,7 @@ export const HomeScreen: React.FC<Props> = ({
   onDeleteClient,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS' | 'REPORTS'>('DOCUMENTS');
+  const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS' | 'REPORTS' | 'VISITORS'>('DOCUMENTS');
   const [docFilter, setDocFilter] = useState<'ALL' | 'BILL' | 'QUOTATION'>('ALL');
   const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
   const [drillDownClient, setDrillDownClient] = useState<string | null>(null);
@@ -109,6 +153,34 @@ export const HomeScreen: React.FC<Props> = ({
   const [lifoMode, setLifoMode] = useState<'delete' | 'cancel'>('delete');
   const [isLifoModalOpen, setIsLifoModalOpen] = useState(false);
   const [isDeletingLifo, setIsDeletingLifo] = useState(false);
+
+  // Lazy-load the visitor log the first time the VISITORS tab opens.
+  useEffect(() => {
+    if (activeTab === 'VISITORS' && !visitsLoaded && !visitsLoading) onLoadVisits();
+  }, [activeTab, visitsLoaded, visitsLoading, onLoadVisits]);
+
+  // "New" device heuristic: the most common IP is assumed to be the owner's;
+  // any other IP gets flagged so an unfamiliar login stands out.
+  const topVisitIp = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const v of visits) {
+      if (v.ip) counts.set(v.ip, (counts.get(v.ip) || 0) + 1);
+    }
+    let top = '';
+    let topN = 0;
+    counts.forEach((n, ip) => { if (n > topN) { topN = n; top = ip; } });
+    return counts.size > 1 ? top : '';
+  }, [visits]);
+
+  const visitStats = useMemo(() => {
+    const ips = new Set(visits.map((v) => v.ip).filter(Boolean));
+    const dayAgo = Date.now() - 24 * 3600 * 1000;
+    const last24h = visits.filter((v) => {
+      const t = new Date(v.timestamp).getTime();
+      return !isNaN(t) && t >= dayAgo;
+    }).length;
+    return { total: visits.length, devices: ips.size, last24h };
+  }, [visits]);
 
   const handleOpenLifoDelete = (doc: DocumentRecord) => {
     setDocToDeleteLifo(doc);
@@ -680,6 +752,7 @@ export const HomeScreen: React.FC<Props> = ({
                 ['DOCUMENTS', FileText, `Documents`],
                 ['CLIENTS', Users, `Clients (${clients.length})`],
                 ['REPORTS', BarChart3, `Reports (${clientReportSummaries.length})`],
+                ['VISITORS', Eye, visitsLoaded ? `Visitors (${visits.length})` : `Visitors`],
               ] as const).map(([tab, Icon, label]) => (
                 <button
                   key={tab}
@@ -1074,6 +1147,91 @@ export const HomeScreen: React.FC<Props> = ({
                     </tfoot>
                   </table>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* VISITORS */}
+          {activeTab === 'VISITORS' && (
+            <div>
+              <div className={`px-4 sm:px-5 py-4 text-white flex flex-col md:flex-row md:items-center justify-between gap-3 ${firmTheme.header}`}>
+                <div className="flex items-center gap-3">
+                  <span className="w-10 h-10 rounded-xl bg-white/5 border border-white/15 flex items-center justify-center">
+                    <Eye className="w-5 h-5 text-white/80" />
+                  </span>
+                  <div>
+                    <h2 className="text-[15px] font-extrabold tracking-tight">Visitor Logins</h2>
+                    <p className="text-xs text-white/70">Every PIN login — location, device &amp; time</p>
+                  </div>
+                </div>
+                <button
+                  onClick={onLoadVisits}
+                  disabled={visitsLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 border border-white/20 text-white transition self-start md:self-auto disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={`w-4 h-4 ${visitsLoading ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+
+              {visitsLoading && !visitsLoaded ? (
+                <div className="p-12 text-center text-sm text-ink-400 font-medium">Loading visitor log…</div>
+              ) : visits.length === 0 ? (
+                <div className="p-12 text-center">
+                  <span className="inline-flex w-12 h-12 rounded-2xl bg-navy-50 text-navy-700 items-center justify-center mb-3">
+                    <Globe className="w-6 h-6" />
+                  </span>
+                  <p className="text-[14px] font-bold text-ink-900">No logins recorded yet</p>
+                  <p className="text-xs text-ink-400 mt-1 max-w-sm mx-auto">
+                    Entries appear here after the next PIN login. Requires backend v2.6.7 or newer
+                    (see Settings for the live backend version).
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3 p-4 bg-paper border-b border-line">
+                    {[
+                      ['Logins', `${visitStats.total}`, 'PIN entries logged'],
+                      ['Devices', `${visitStats.devices}`, 'unique IPs seen'],
+                      ['Last 24h', `${visitStats.last24h}`, 'recent logins'],
+                    ].map(([label, value, sub]) => (
+                      <div key={label} className="corp-card p-3 text-center">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-ink-400">{label}</div>
+                        <div className="text-xl font-extrabold text-ink-900 mt-0.5">{value}</div>
+                        <div className="text-[10px] text-ink-400">{sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-4 grid gap-2 sm:grid-cols-2">
+                    {visits.map((v, i) => {
+                      const isMobile = /mobile/i.test(v.device || '');
+                      const isNew = !!topVisitIp && !!v.ip && v.ip !== topVisitIp;
+                      const loc = [v.city, v.region, v.country].filter(Boolean).join(', ');
+                      return (
+                        <div key={`${v.timestamp}-${i}`} className="p-3 rounded-xl border border-line bg-paper/60 flex items-start gap-3">
+                          <span className="w-9 h-9 rounded-lg bg-navy-50 text-navy-700 flex items-center justify-center shrink-0">
+                            {isMobile ? <Smartphone className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[13px] font-bold text-ink-900">{v.device || 'Unknown device'}</span>
+                              {isNew && (
+                                <span className="corp-chip bg-amber-100 text-amber-800 border border-amber-300">New</span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-ink-500 mt-0.5 truncate">
+                              {loc || 'Unknown location'}{v.ip ? ` · ${v.ip}` : ''}
+                            </div>
+                            <div className="text-[11px] text-ink-400 mt-0.5">
+                              {visitTimeAgo(v.timestamp)}
+                              {visitFullDate(v.timestamp) ? ` · ${visitFullDate(v.timestamp)}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           )}

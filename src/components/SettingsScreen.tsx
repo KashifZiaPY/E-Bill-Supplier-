@@ -704,7 +704,7 @@ export const SettingsScreen: React.FC<Props> = ({
               <span className="font-extrabold text-navy-900 block">Connect your sheet in 4 steps</span>
               <ol className="list-decimal list-inside space-y-1 text-[11px]">
                 <li>Open your Google Sheet → <strong>Extensions → Apps Script</strong>.</li>
-                <li>Paste the <strong>Code.gs v2.6.4</strong> script (button below) and save.</li>
+                <li>Paste the <strong>Code.gs v2.6.6</strong> script (button below) and save.</li>
                 <li><strong>Deploy → New deployment → Web app</strong> · Execute as <strong>Me</strong>, access <strong>Anyone</strong>.</li>
                 <li>Paste the web app URL above and hit <strong>Save &amp; Connect</strong>.</li>
               </ol>
@@ -716,7 +716,7 @@ export const SettingsScreen: React.FC<Props> = ({
               className="corp-btn-primary w-full !py-3 text-xs"
             >
               <FileCode className="w-4 h-4 text-gold-400" />
-              <span>View &amp; Copy Apps Script (Code.gs v2.6.5)</span>
+              <span>View &amp; Copy Apps Script (Code.gs v2.6.6)</span>
             </button>
           </section>
         </form>
