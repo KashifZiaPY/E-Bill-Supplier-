@@ -30,6 +30,7 @@ import {
   safeNormalizeItems,
 } from '../utils/formatters';
 import { getSuggestedNextNo } from '../utils/lifoHelper';
+import { getFirmDashboardTheme } from '../utils/firmTheme';
 
 interface Props {
   initialDoc?: Partial<DocumentRecord> | null;
@@ -110,6 +111,10 @@ export const EntryFormScreen: React.FC<Props> = ({
     }
     return f;
   }, [firms, selectedFirmId, docs, settings.activeFirmId, settings.nextBillNo, settings.nextQuoteNo]);
+
+  // Per-firm identity: the entry header takes the firm's theme color and shows
+  // which firm this bill is being created under — no more wrong-firm entries.
+  const firmTheme = getFirmDashboardTheme(activeFirm);
 
   // Form states
   const [docNoManuallyEdited, setDocNoManuallyEdited] = useState(false);
@@ -488,9 +493,9 @@ export const EntryFormScreen: React.FC<Props> = ({
 
   return (
     <div className="min-h-screen flex flex-col pb-28 sm:pb-10">
-      {/* Corporate top bar */}
-      <header className="bg-navy-950 text-white sticky top-0 z-30 shadow-[0_2px_12px_rgba(12,28,51,0.35)]">
-        <div className="h-0.5 bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />
+      {/* Corporate top bar — themed per firm so the billing firm is unmistakable */}
+      <header className={`text-white sticky top-0 z-30 shadow-lg ${firmTheme.header}`}>
+        <div className={`h-0.5 ${firmTheme.accentBar}`} />
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <button
@@ -503,7 +508,11 @@ export const EntryFormScreen: React.FC<Props> = ({
             <span className={`corp-chip shrink-0 ${docType === 'BILL' ? 'bg-navy-700 text-white border border-navy-600' : 'bg-gold-500 text-navy-950'}`}>
               {docType}
             </span>
-            <h1 className="text-[17px] font-extrabold tracking-tight truncate">
+            <span className={`corp-chip shrink-0 border ${firmTheme.firmChip}`} title="Billing under this firm">
+              <span className={`w-2 h-2 rounded-full ${firmTheme.firmDot}`} />
+              {activeFirm.name}
+            </span>
+            <h1 className="text-[17px] font-extrabold tracking-tight truncate hidden sm:block">
               {initialDoc?.docId || initialDoc?.DocID ? 'Edit' : 'New'} {docType === 'BILL' ? 'Supplier Bill' : 'Quotation'}
             </h1>
           </div>

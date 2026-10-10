@@ -35,6 +35,7 @@ import {
 import type { DocumentRecord, SavedClient, SupplierSettings } from '../types/billing';
 import { formatCurrency, formatDateDisplay, safeNormalizeItems } from '../utils/formatters';
 import { isLastDocLIFO } from '../utils/lifoHelper';
+import { getFirmDashboardTheme } from '../utils/firmTheme';
 import { LifoDeleteModal } from './LifoDeleteModal';
 import {
   exportDocumentsToExcel,
@@ -178,6 +179,9 @@ export const HomeScreen: React.FC<Props> = ({
   ];
 
   const currentFirm = firms.find((f) => f.id === activeFirmId) || firms[0];
+  // Per-firm dashboard identity: distinct header/card colors per firm theme so
+  // the active firm is obvious before any entry is made.
+  const firmTheme = getFirmDashboardTheme(currentFirm);
 
   // Comprehensive Omnisearch Document Filtering (Search anything: Doc#, Bill#, Value, Client, Item, Ref, Date, Status, Firm)
   const filteredDocs = useMemo(() => {
@@ -431,11 +435,11 @@ export const HomeScreen: React.FC<Props> = ({
   return (
     <div className="min-h-screen flex flex-col">
       {/* Corporate header */}
-      <header className="bg-navy-950 text-white sticky top-0 z-30 shadow-[0_2px_12px_rgba(12,28,51,0.35)]">
-        <div className="h-0.5 bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />
+      <header className={`text-white sticky top-0 z-30 shadow-lg ${firmTheme.header}`}>
+        <div className={`h-0.5 ${firmTheme.accentBar}`} />
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white/5 border border-gold-500/50 flex items-center justify-center font-extrabold text-lg text-gold-400">
+            <div className={`w-11 h-11 rounded-xl bg-white/5 border flex items-center justify-center font-extrabold text-lg ${firmTheme.logoTile}`}>
               FA
             </div>
             <div>
@@ -443,11 +447,11 @@ export const HomeScreen: React.FC<Props> = ({
                 <h1 className="text-[17px] font-extrabold tracking-tight text-white">
                   {settings.ownerName || 'MIAN FARHAN ANWAR'}
                 </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gold-500/15 text-gold-400 border border-gold-500/40 uppercase tracking-wider">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${firmTheme.enterpriseChip}`}>
                   Enterprise Group
                 </span>
               </div>
-              <p className="text-xs text-navy-200 font-medium">
+              <p className="text-xs text-white/70 font-medium">
                 Govt Contractors &amp; General Order Suppliers · Billing Portal
               </p>
             </div>
@@ -455,10 +459,11 @@ export const HomeScreen: React.FC<Props> = ({
 
           <div className="flex items-center gap-2">
             <div className="relative">
+              <span className={`w-2.5 h-2.5 rounded-full ${firmTheme.firmDot} absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ring-2 ring-white/20`} />
               <select
                 value={activeFirmId}
                 onChange={(e) => onSelectFirm(e.target.value)}
-                className="appearance-none bg-white/10 hover:bg-white/15 border border-white/20 rounded-xl pl-3.5 pr-9 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-gold-400/60 cursor-pointer transition"
+                className={`appearance-none bg-white/10 hover:bg-white/15 border border-white/20 rounded-xl pl-8 pr-9 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 ${firmTheme.selectRing} cursor-pointer transition`}
               >
                 {firms.map((firm) => (
                   <option key={firm.id} value={firm.id} className="text-ink-900 font-semibold">
@@ -502,7 +507,7 @@ export const HomeScreen: React.FC<Props> = ({
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
           <div className="corp-card p-4">
             <div className="flex items-center gap-2.5">
-              <span className="w-9 h-9 rounded-lg bg-navy-900 text-gold-400 flex items-center justify-center shrink-0">
+              <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${firmTheme.entityTile}`}>
                 <Building2 className="w-4.5 h-4.5" />
               </span>
               <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500 leading-tight">Active<br />Entity</span>
@@ -564,16 +569,16 @@ export const HomeScreen: React.FC<Props> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
           <button
             onClick={onNewBill}
-            className="group p-5 rounded-2xl bg-navy-900 hover:bg-navy-950 active:scale-[0.99] text-white flex items-center justify-between shadow-[0_8px_20px_-8px_rgba(12,28,51,0.5)] transition text-left"
+            className={`group p-5 rounded-2xl active:scale-[0.99] text-white flex items-center justify-between transition text-left ${firmTheme.createBill}`}
           >
             <div>
               <div className="text-[17px] font-extrabold tracking-tight">Create New Bill</div>
-              <p className="text-xs text-navy-200 font-medium mt-0.5">Under {currentFirm.name}</p>
+              <p className={`text-xs font-medium mt-0.5 ${firmTheme.createBillSub}`}>Under {currentFirm.name}</p>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <span className="corp-chip bg-gold-500 text-navy-950">Next #{currentFirm.nextBillNo || '101'}</span>
+              <span className={`corp-chip ${firmTheme.createBillChip}`}>Next #{currentFirm.nextBillNo || '101'}</span>
               <span className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center group-hover:bg-white/15 transition">
-                <FilePlus className="w-5 h-5 text-gold-400" />
+                <FilePlus className={`w-5 h-5 ${firmTheme.createBillIcon}`} />
               </span>
             </div>
           </button>
