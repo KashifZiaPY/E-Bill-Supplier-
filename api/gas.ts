@@ -32,6 +32,18 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     const activeUrl = (process.env.GAS_URL || stored.gasUrl || '').trim();
     const activeKey = (process.env.GAS_API_KEY || stored.gasApiKey || '').trim();
+    // Live backend version, read server-side from the Apps Script doGet
+    // (avoids browser CORS issues with script.google.com redirects).
+    let backendVersion: string | null = null;
+    if (activeUrl) {
+      try {
+        const r = await fetch(activeUrl, { method: 'GET', redirect: 'follow' });
+        const data: any = await r.json();
+        if (data && data.version) backendVersion = String(data.version);
+      } catch {
+        // Leave null: the UI degrades gracefully.
+      }
+    }
     return res.status(200).json({
       ok: true,
       service: 'Anwar Traders & Hashir Traders GAS Proxy',
@@ -39,6 +51,7 @@ export default async function handler(req: any, res: any) {
       gasApiKeyConfigured: !!activeKey,
       appPinConfigured: !!process.env.APP_PIN,
       deletePinConfigured: !!process.env.DELETE_PIN,
+      backendVersion,
       gasUrlPreview: activeUrl ? (activeUrl.length > 55 ? activeUrl.substring(0, 42) + '...' + activeUrl.substring(activeUrl.length - 12) : activeUrl) : '',
     });
   }

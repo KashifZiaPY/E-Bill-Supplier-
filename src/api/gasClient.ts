@@ -921,18 +921,17 @@ class GasClient {
   }
 
   /**
-   * Reads the deployed backend version straight from the Apps Script doGet
-   * (plain GET to the /exec URL, no PIN needed). Returns e.g. "2.6.5" or
-   * null when unreachable. Used by the Settings footer so it is always
-   * obvious which backend build is actually live.
+   * Reads the deployed backend version via the same-origin /api/gas proxy
+   * (the proxy fetches the Apps Script doGet server-side, so there are no
+   * browser CORS issues). Returns e.g. "2.6.5" or null when unreachable.
+   * Used by the Settings footer so it is always obvious which backend
+   * build is actually live.
    */
   async getBackendVersion(): Promise<string | null> {
-    const url = this.getGasUrl();
-    if (!url) return null;
     try {
-      const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+      const res = await fetch('/api/gas', { method: 'GET' });
       const data = await res.json();
-      const v = data && (data.version || data.data?.version);
+      const v = data && (data.backendVersion || data.version);
       return v ? String(v) : null;
     } catch {
       return null;
