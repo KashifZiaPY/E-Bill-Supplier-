@@ -24,6 +24,10 @@ export interface FirmDashboardTheme {
   entityTile: string;
   firmDot: string;
   firmChip: string;
+  /** "You are using FIRM" banner strip */
+  bannerBg: string;
+  /** blinking firm-name color (differs per firm) */
+  bannerBlink: string;
 }
 
 const CLASSIC_GOVT_THEME: FirmDashboardTheme = {
@@ -39,6 +43,8 @@ const CLASSIC_GOVT_THEME: FirmDashboardTheme = {
   entityTile: 'bg-navy-900 text-gold-400',
   firmDot: 'bg-gold-400',
   firmChip: 'bg-gold-500/15 text-gold-300 border-gold-500/40',
+  bannerBg: 'bg-navy-900',
+  bannerBlink: 'text-yellow-400',
 };
 
 const MODERN_CORPORATE_THEME: FirmDashboardTheme = {
@@ -54,6 +60,8 @@ const MODERN_CORPORATE_THEME: FirmDashboardTheme = {
   entityTile: 'bg-emerald-900 text-emerald-300',
   firmDot: 'bg-emerald-400',
   firmChip: 'bg-emerald-500/15 text-emerald-200 border-emerald-500/40',
+  bannerBg: 'bg-emerald-900',
+  bannerBlink: 'text-lime-300',
 };
 
 export function getFirmDashboardTheme(firm?: FirmProfile | null): FirmDashboardTheme {

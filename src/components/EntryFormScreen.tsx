@@ -31,6 +31,7 @@ import {
 } from '../utils/formatters';
 import { getSuggestedNextNo } from '../utils/lifoHelper';
 import { getFirmDashboardTheme } from '../utils/firmTheme';
+import { FirmBanner } from './FirmBanner';
 
 interface Props {
   initialDoc?: Partial<DocumentRecord> | null;
@@ -542,6 +543,8 @@ export const EntryFormScreen: React.FC<Props> = ({
           </div>
         </div>
       </header>
+
+      <FirmBanner firmName={activeFirm.name} theme={firmTheme} maxWidthClass="max-w-5xl" />
 
       <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 w-full flex-1">
         {formError && (

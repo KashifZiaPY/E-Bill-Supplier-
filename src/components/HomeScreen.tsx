@@ -36,6 +36,7 @@ import type { DocumentRecord, SavedClient, SupplierSettings } from '../types/bil
 import { formatCurrency, formatDateDisplay, safeNormalizeItems } from '../utils/formatters';
 import { isLastDocLIFO } from '../utils/lifoHelper';
 import { getFirmDashboardTheme } from '../utils/firmTheme';
+import { FirmBanner } from './FirmBanner';
 import { LifoDeleteModal } from './LifoDeleteModal';
 import {
   exportDocumentsToExcel,
@@ -501,6 +502,7 @@ export const HomeScreen: React.FC<Props> = ({
         </div>
       </header>
 
+      <FirmBanner firmName={currentFirm.name} theme={firmTheme} />
 
       <main className="max-w-6xl mx-auto px-4 py-5 w-full flex-1">
         {/* KPI cards — restrained corporate */}
