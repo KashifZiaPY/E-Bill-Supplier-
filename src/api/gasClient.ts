@@ -919,6 +919,24 @@ class GasClient {
       throw new Error('Could not reach the billing server. Check your connection and try again.');
     }
   }
+
+  /**
+   * Reads the deployed backend version via the same-origin /api/gas proxy
+   * (the proxy fetches the Apps Script doGet server-side, so there are no
+   * browser CORS issues). Returns e.g. "2.6.5" or null when unreachable.
+   * Used by the Settings footer so it is always obvious which backend
+   * build is actually live.
+   */
+  async getBackendVersion(): Promise<string | null> {
+    try {
+      const res = await fetch('/api/gas', { method: 'GET' });
+      const data = await res.json();
+      const v = data && (data.backendVersion || data.version);
+      return v ? String(v) : null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export const gasApi = new GasClient();
