@@ -25,6 +25,33 @@ function saveStoredConfig(cfg: { gasUrl?: string; gasApiKey?: string }) {
   }
 }
 
+/**
+ * Visitor/device info from Vercel edge headers. Shared by the login audit
+ * (logVisit) and the online-sessions heartbeat. Only the first three IP
+ * octets are kept.
+ */
+function getVisitorInfo(req: any) {
+  const fwdFor = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const ipParts = fwdFor.split('.');
+  const shortIp = ipParts.length === 4 ? ipParts.slice(0, 3).join('.') + '.x' : (fwdFor ? fwdFor.substring(0, 24) : '');
+  const ua = String(req.headers['user-agent'] || '');
+  const isMobile = /mobile|android|iphone|ipad/i.test(ua);
+  let browser = 'Other';
+  if (/edg/i.test(ua)) browser = 'Edge';
+  else if (/chrome/i.test(ua)) browser = 'Chrome';
+  else if (/safari/i.test(ua)) browser = 'Safari';
+  else if (/firefox/i.test(ua)) browser = 'Firefox';
+  let city = '';
+  try { city = decodeURIComponent(String(req.headers['x-vercel-ip-city'] || '')); } catch { /* ignore */ }
+  return {
+    country: String(req.headers['x-vercel-ip-country'] || ''),
+    region: String(req.headers['x-vercel-ip-country-region'] || ''),
+    city,
+    ip: shortIp,
+    device: `${isMobile ? 'Mobile' : 'Desktop'} · ${browser}`,
+  };
+}
+
 export default async function handler(req: any, res: any) {
   const stored = getStoredConfig();
 
@@ -170,6 +197,12 @@ export default async function handler(req: any, res: any) {
       key: gasApiKey || '',
     };
 
+    // Heartbeats carry device/location: enrich server-side from edge headers
+    // before forwarding (the browser never sees this logic).
+    if (bodyData && (bodyData as any).action === 'heartbeat') {
+      (forwardPayload as any).payload = { ...((forwardPayload as any).payload || {}), ...getVisitorInfo(req) };
+    }
+
     // Forward to Google Apps Script Web App
     const gasResponse = await fetch(targetUrl, {
       method: 'POST',
@@ -215,26 +248,9 @@ export default async function handler(req: any, res: any) {
     // first three IP octets are stored.
     if (bodyData && bodyData.action === 'bootstrap' && jsonResult && jsonResult.ok) {
       try {
-        const fwdFor = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-        const ipParts = fwdFor.split('.');
-        const shortIp = ipParts.length === 4 ? ipParts.slice(0, 3).join('.') + '.x' : (fwdFor ? fwdFor.substring(0, 24) : '');
-        const ua = String(req.headers['user-agent'] || '');
-        const isMobile = /mobile|android|iphone|ipad/i.test(ua);
-        let browser = 'Other';
-        if (/edg/i.test(ua)) browser = 'Edge';
-        else if (/chrome/i.test(ua)) browser = 'Chrome';
-        else if (/safari/i.test(ua)) browser = 'Safari';
-        else if (/firefox/i.test(ua)) browser = 'Firefox';
         const visitPayload = {
           action: 'logVisit',
-          payload: {
-            event: 'login',
-            country: String(req.headers['x-vercel-ip-country'] || ''),
-            region: String(req.headers['x-vercel-ip-country-region'] || ''),
-            city: (() => { try { return decodeURIComponent(String(req.headers['x-vercel-ip-city'] || '')); } catch { return ''; } })(),
-            ip: shortIp,
-            device: `${isMobile ? 'Mobile' : 'Desktop'} · ${browser}`,
-          },
+          payload: { event: 'login', ...getVisitorInfo(req) },
           key: gasApiKey || '',
         };
         const logReq = fetch(targetUrl, {

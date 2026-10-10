@@ -95,6 +95,12 @@ function doPost(e) {
       case 'getVisits':
         return createJsonResponse({ ok: true, data: handleGetVisits(ss, payload) });
 
+      case 'heartbeat':
+        return createJsonResponse({ ok: true, data: handleHeartbeat(ss, payload) });
+
+      case 'getActiveSessions':
+        return createJsonResponse({ ok: true, data: handleGetActiveSessions(ss) });
+
       case 'cancelDoc':
         var cancelResult = handleCancelDoc(ss, payload);
         return createJsonResponse({ ok: true, data: cancelResult });
@@ -126,7 +132,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.8',
+    version: '2.6.9',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -466,6 +472,81 @@ function handleGetVisits(ss, payload) {
     });
   }
   return { visits: visits };
+}
+
+/**
+ * "Who is online right now" via heartbeats. The frontend pings this action
+ * about once a minute while the app is open (and sends bye:true on lock),
+ * so a session whose LastSeen is older than ~3 minutes is considered gone.
+ * No script lock: sessions are independent rows, heartbeats must never wait.
+ */
+function handleHeartbeat(ss, payload) {
+  var sid = String((payload && payload.sessionId) || '').trim();
+  if (!sid) return { ok: false, error: 'missing sessionId' };
+  var sheet = ss.getSheetByName('Sessions');
+  if (!sheet) {
+    sheet = ss.insertSheet('Sessions');
+    sheet.appendRow(['SessionID', 'LastSeen', 'IP', 'Device', 'Country', 'Region', 'City']);
+    sheet.setFrozenRows(1);
+  }
+  if (payload && payload.bye) {
+    var idCol = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 1), 1).getValues();
+    for (var r = idCol.length - 1; r >= 0; r--) {
+      if (String(idCol[r][0] || '').trim() === sid) sheet.deleteRow(r + 2);
+    }
+    return { ok: true, ended: true };
+  }
+  var nowIso = new Date().toISOString();
+  var row = [nowIso,
+    String(payload.ip || ''), String(payload.device || ''),
+    String(payload.country || ''), String(payload.region || ''), String(payload.city || '')];
+  var found = false;
+  if (sheet.getLastRow() >= 2) {
+    var sids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < sids.length; i++) {
+      if (String(sids[i][0] || '').trim() === sid) {
+        sheet.getRange(i + 2, 2, 1, 6).setValues([row]);
+        found = true;
+        break;
+      }
+    }
+  }
+  if (!found) sheet.appendRow([sid].concat(row));
+  pruneSessions(sheet);
+  return { ok: true };
+}
+
+function pruneSessions(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  var seen = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+  var cutoff = Date.now() - 10 * 60 * 1000;
+  for (var r = seen.length - 1; r >= 0; r--) {
+    var t = new Date(seen[r][0]).getTime();
+    if (isNaN(t) || t < cutoff) sheet.deleteRow(r + 2);
+  }
+}
+
+function handleGetActiveSessions(ss) {
+  var sheet = ss.getSheetByName('Sessions');
+  if (!sheet || sheet.getLastRow() < 2) return { sessions: [] };
+  pruneSessions(sheet);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { sessions: [] };
+  var values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  var out = [];
+  for (var i = values.length - 1; i >= 0; i--) {
+    out.push({
+      sessionId: String(values[i][0] || ''),
+      lastSeen: String(values[i][1] || ''),
+      ip: String(values[i][2] || ''),
+      device: String(values[i][3] || ''),
+      country: String(values[i][4] || ''),
+      region: String(values[i][5] || ''),
+      city: String(values[i][6] || '')
+    });
+  }
+  return { sessions: out };
 }
 
 /**
@@ -1038,7 +1119,7 @@ export const GoogleAppsScriptModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h2 className="text-base sm:text-lg font-black text-white">
                   Google Apps Script Backend (Code.gs)
                 </h2>
-                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.8 · Current</span>
+                <span className="corp-chip bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">v2.6.9 · Current</span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
                 Container-bound Apps Script for Google Sheets · Syncs LIFO Deletion, Clients &amp; Billing

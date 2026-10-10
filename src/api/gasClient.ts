@@ -758,6 +758,35 @@ class GasClient {
     }
   }
 
+  /**
+   * Online-presence heartbeat. Called about once a minute while the app is
+   * open; bye=true drops the session immediately (on lock). Never throws.
+   */
+  async heartbeat(sessionId: string, bye = false): Promise<void> {
+    try {
+      await this.mutateOrThrow('heartbeat', { sessionId, bye });
+    } catch {
+      /* presence must never break the app */
+    }
+  }
+
+  /**
+   * Sessions seen recently (backend prunes >10 min). The frontend treats
+   * lastSeen within ~3 minutes as "online now".
+   */
+  async getActiveSessions(): Promise<Array<{
+    sessionId: string; lastSeen: string; ip: string; device: string;
+    country: string; region: string; city: string;
+  }>> {
+    try {
+      const res: any = await this.mutateOrThrow('getActiveSessions', {});
+      const sessions = res?.sessions || res?.data?.sessions || [];
+      return Array.isArray(sessions) ? sessions : [];
+    } catch {
+      return [];
+    }
+  }
+
   async cancelDoc(docId: string): Promise<{ ok: boolean }> {
     await this.mutateOrThrow('cancelDoc', { docId });
     return { ok: true };

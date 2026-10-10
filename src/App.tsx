@@ -13,7 +13,7 @@ import type {
 } from './types/billing';
 import { DEFAULT_SETTINGS, gasApi, DeletePinRequiredError } from './api/gasClient';
 import { PinScreen } from './components/PinScreen';
-import { HomeScreen, type VisitRow } from './components/HomeScreen';
+import { HomeScreen, type VisitRow, type ActiveSession } from './components/HomeScreen';
 import { EntryFormScreen } from './components/EntryFormScreen';
 import { PreviewScreen } from './components/PreviewScreen';
 import { SettingsScreen } from './components/SettingsScreen';
@@ -45,6 +45,9 @@ export default function App() {
   const [visits, setVisits] = useState<VisitRow[]>([]);
   const [visitsLoading, setVisitsLoading] = useState(false);
   const [visitsLoaded, setVisitsLoaded] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  // Per-login session id (regenerated on every PIN login; one per browser tab).
+  const sessionIdRef = useRef('');
 
   const loadVisits = async () => {
     if (visitsLoading) return;
@@ -59,6 +62,29 @@ export default function App() {
       setVisitsLoading(false);
     }
   };
+
+  const loadSessions = async () => {
+    try {
+      setActiveSessions(await gasApi.getActiveSessions());
+    } catch {
+      /* presence is best-effort */
+    }
+  };
+
+  // Online-presence heartbeat: while logged in, ping about once a minute so
+  // the Visitors modal can show who is currently in the app.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const sid = sessionIdRef.current;
+    if (sid) void gasApi.heartbeat(sid);
+    void loadSessions();
+    const t = setInterval(() => {
+      if (sessionIdRef.current) void gasApi.heartbeat(sessionIdRef.current);
+      void loadSessions();
+    }, 60000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
   const [resumeCandidates, setResumeCandidates] = useState<DocumentRecord[] | null>(null);
   const [deletePinRequired, setDeletePinRequired] = useState<boolean>(false);
 
@@ -210,6 +236,8 @@ export default function App() {
       if (ok) {
         isAuthenticatedRef.current = true;
         setIsAuthenticated(true);
+        // Fresh presence session for this login (one per browser tab).
+        sessionIdRef.current = 'sess-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         showToast(`Welcome to ${settings.ownerName || 'MIAN FARHAN ANWAR'} Enterprise Portal`, 'success');
         const bootData: any = await loadBootstrapData();
         try {
@@ -234,6 +262,9 @@ export default function App() {
   };
 
   const handleLock = () => {
+    // End the presence session immediately so "online now" drops at once.
+    if (sessionIdRef.current) void gasApi.heartbeat(sessionIdRef.current, true);
+    sessionIdRef.current = '';
     gasApi.clearPin();
     clearDraftState();
     isAuthenticatedRef.current = false;
@@ -242,6 +273,7 @@ export default function App() {
     setDrafts([]);
     setVisits([]);
     setVisitsLoaded(false);
+    setActiveSessions([]);
     setCurrentScreen('HOME');
     showToast('App locked successfully', 'info');
   };
@@ -592,6 +624,9 @@ export default function App() {
           visitsLoading={visitsLoading}
           visitsLoaded={visitsLoaded}
           onLoadVisits={() => { void loadVisits(); }}
+          sessionId={sessionIdRef.current}
+          activeSessions={activeSessions}
+          onLoadSessions={() => { void loadSessions(); }}
           onRetryConnection={() => { void loadBootstrapData(); }}
           deletePinRequired={deletePinRequired}
           activeFirmId={activeFirmId}

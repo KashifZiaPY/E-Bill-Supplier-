@@ -57,6 +57,24 @@ export interface VisitRow {
   device: string;
 }
 
+export interface ActiveSession {
+  sessionId: string;
+  lastSeen: string;
+  ip: string;
+  device: string;
+  country: string;
+  region: string;
+  city: string;
+}
+
+/** A session counts as "online now" if its heartbeat is fresher than this. */
+const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+
+export function isSessionOnline(s: ActiveSession, nowMs = Date.now()): boolean {
+  const t = new Date(s.lastSeen).getTime();
+  return !isNaN(t) && nowMs - t < ONLINE_WINDOW_MS;
+}
+
 function visitTimeAgo(iso: string): string {
   const t = new Date(iso).getTime();
   if (isNaN(t)) return '';
@@ -87,6 +105,9 @@ interface Props {
   visitsLoading: boolean;
   visitsLoaded: boolean;
   onLoadVisits: () => void;
+  sessionId: string;
+  activeSessions: ActiveSession[];
+  onLoadSessions: () => void;
   settings: SupplierSettings;
   clients: SavedClient[];
   onRetryConnection?: () => void;
@@ -129,6 +150,9 @@ export const HomeScreen: React.FC<Props> = ({
   visits,
   visitsLoading,
   visitsLoaded,
+  sessionId,
+  activeSessions,
+  onLoadSessions,
   onEditDoc,
   onDuplicateDoc,
   onMakeBillFromQuotation,
@@ -159,8 +183,19 @@ export const HomeScreen: React.FC<Props> = ({
 
   // Lazy-load the visitor log the first time the modal opens.
   useEffect(() => {
-    if (visitorsOpen && !visitsLoaded && !visitsLoading) onLoadVisits();
-  }, [visitorsOpen, visitsLoaded, visitsLoading, onLoadVisits]);
+    if (visitorsOpen) {
+      if (!visitsLoaded && !visitsLoading) onLoadVisits();
+      onLoadSessions();
+    }
+  }, [visitorsOpen, visitsLoaded, visitsLoading, onLoadVisits, onLoadSessions]);
+
+  // "Online now": sessions with a fresh heartbeat. Recomputed on each render
+  // so the list goes stale honestly as heartbeats age out.
+  const onlineSessions = useMemo(
+    () => activeSessions.filter((s) => isSessionOnline(s)),
+    [activeSessions]
+  );
+  const othersOnline = onlineSessions.filter((s) => s.sessionId !== sessionId).length;
 
   // "New" device heuristic: the most common IP is assumed to be the owner's;
   // any other IP gets flagged so an unfamiliar login stands out.
@@ -578,6 +613,12 @@ export const HomeScreen: React.FC<Props> = ({
               )}
               {hasNewVisitor && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-white/30" title="Unfamiliar login detected" />
+              )}
+              {othersOnline > 0 && (
+                <span className="absolute -top-1 -left-1 flex h-2.5 w-2.5" title={`${othersOnline} other session${othersOnline === 1 ? '' : 's'} online now`}>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 ring-2 ring-white/30" />
+                </span>
               )}
             </button>
 
@@ -1217,20 +1258,70 @@ export const HomeScreen: React.FC<Props> = ({
 
               {visitsLoading && !visitsLoaded ? (
                 <div className="p-12 text-center text-sm text-ink-400 font-medium">Loading visitor log…</div>
-              ) : visits.length === 0 ? (
-                <div className="p-12 text-center">
-                  <span className="inline-flex w-12 h-12 rounded-2xl bg-navy-50 text-navy-700 items-center justify-center mb-3">
-                    <Globe className="w-6 h-6" />
-                  </span>
-                  <p className="text-[14px] font-bold text-ink-900">No logins recorded yet</p>
-                  <p className="text-xs text-ink-400 mt-1 max-w-sm mx-auto">
-                    Entries appear here after the next PIN login. Requires backend v2.6.7 or newer
-                    (see Settings for the live backend version).
-                  </p>
-                </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-3 gap-3 p-4 bg-paper border-b border-line">
+                  {/* Online now — live presence via heartbeats */}
+                  <div className="px-4 sm:px-5 pt-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                      </span>
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-ink-700">
+                        Online now ({onlineSessions.length})
+                      </span>
+                    </div>
+                    {onlineSessions.length === 0 ? (
+                      <p className="text-xs text-ink-400 pb-1">No active sessions at the moment.</p>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2 pb-1">
+                        {onlineSessions.map((s) => {
+                          const isMobile = /mobile/i.test(s.device || '');
+                          const isSelf = !!sessionId && s.sessionId === sessionId;
+                          const loc = [s.city, s.region, s.country].filter(Boolean).join(', ');
+                          return (
+                            <div key={s.sessionId} className="p-3 rounded-xl border-2 border-emerald-200 bg-emerald-50/60 flex items-start gap-3">
+                              <span className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                {isMobile ? <Smartphone className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[13px] font-bold text-ink-900">{s.device || 'Unknown device'}</span>
+                                  {isSelf && (
+                                    <span className="corp-chip bg-emerald-500 text-white !px-1.5 !py-0 text-[10px]">This device</span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-ink-500 mt-0.5 truncate">
+                                  {loc || 'Unknown location'}{s.ip ? ` · ${s.ip}` : ''}
+                                </div>
+                                <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">Active now</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="px-4 sm:px-5 pt-3">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-ink-400">
+                      Login history
+                    </span>
+                  </div>
+                  {visits.length === 0 ? (
+                    <div className="p-12 pt-6 text-center">
+                      <span className="inline-flex w-12 h-12 rounded-2xl bg-navy-50 text-navy-700 items-center justify-center mb-3">
+                        <Globe className="w-6 h-6" />
+                      </span>
+                      <p className="text-[14px] font-bold text-ink-900">No logins recorded yet</p>
+                      <p className="text-xs text-ink-400 mt-1 max-w-sm mx-auto">
+                        Entries appear here after the next PIN login. Requires backend v2.6.7 or newer
+                        (see Settings for the live backend version).
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-3 p-4 bg-paper border-b border-line">
                     {[
                       ['Logins', `${visitStats.total}`, 'PIN entries logged'],
                       ['Devices', `${visitStats.devices}`, 'unique IPs seen'],
@@ -1274,9 +1365,11 @@ export const HomeScreen: React.FC<Props> = ({
                   </div>
                 </>
               )}
-              </div>
+            </>
+          )}
             </div>
           </div>
+        </div>
           )}
         </div>
       </main>
