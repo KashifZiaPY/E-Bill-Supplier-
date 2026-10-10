@@ -69,6 +69,20 @@ export const SettingsScreen: React.FC<Props> = ({
   const [isDeletingLifo, setIsDeletingLifo] = useState(false);
   const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
 
+  // Live backend version (read from the deployed Apps Script doGet)
+  const [backendVersion, setBackendVersion] = useState<string | null>(null);
+  const [backendVersionChecked, setBackendVersionChecked] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    gasApi.getBackendVersion().then((v) => {
+      if (!cancelled) {
+        setBackendVersion(v);
+        setBackendVersionChecked(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const handleOpenLifoDelete = (doc: DocumentRecord) => {
     setDocToDeleteLifo(doc);
     setIsLifoModalOpen(true);
@@ -702,7 +716,7 @@ export const SettingsScreen: React.FC<Props> = ({
               className="corp-btn-primary w-full !py-3 text-xs"
             >
               <FileCode className="w-4 h-4 text-gold-400" />
-              <span>View &amp; Copy Apps Script (Code.gs v2.6.4)</span>
+              <span>View &amp; Copy Apps Script (Code.gs v2.6.5)</span>
             </button>
           </section>
         </form>
@@ -710,6 +724,13 @@ export const SettingsScreen: React.FC<Props> = ({
 
       <footer className="py-4 text-center text-[11px] text-ink-400 font-medium">
         e-billing system developed by MKZ v1.0
+        <div className="mt-0.5 text-[10px] text-ink-500">
+          {!backendVersionChecked
+            ? 'Checking backend version…'
+            : backendVersion
+              ? `Backend v${backendVersion} connected`
+              : 'Backend version unavailable'}
+        </div>
       </footer>
 
       <GoogleAppsScriptModal isOpen={isScriptModalOpen} onClose={() => setIsScriptModalOpen(false)} />
