@@ -832,6 +832,28 @@ class GasClient {
     return { ok: true, ...(res || {}) };
   }
 
+  /**
+   * Moves a document to another firm. Drafts just change firm; issued docs
+   * are re-issued under the target firm's next number (old number left vacant).
+   */
+  async switchFirm(
+    docId: string,
+    targetFirmId: string
+  ): Promise<{
+    ok: boolean;
+    wasDraft?: boolean;
+    oldDocNo?: string;
+    newDocNo?: string;
+    targetFirmId?: string;
+    targetFirmName?: string;
+    sourceFirmName?: string;
+    docType?: string;
+    settings?: any;
+  }> {
+    const res: any = await this.mutateOrThrow('switchFirm', { docId, targetFirmId });
+    return { ok: true, ...(res || {}) };
+  }
+
   async checkBackendStatus(): Promise<{
     tested: boolean;
     ok: boolean;

@@ -66,6 +66,10 @@ function doPost(e) {
         var deleteResult = handleDeleteDoc(ss, payload);
         return createJsonResponse({ ok: true, data: deleteResult });
 
+      case 'switchFirm':
+        var switchResult = handleSwitchFirm(ss, payload);
+        return createJsonResponse({ ok: true, data: switchResult });
+
       case 'discardDraft':
         var discardResult = handleDiscardDraft(ss, payload);
         return createJsonResponse({ ok: true, data: discardResult });
@@ -114,7 +118,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.10',
+    version: '2.6.11',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
@@ -945,6 +949,101 @@ function updateSequenceCounter(ss, firmId, docType, docNo, isRollback) {
   settings.firms = currentFirms;
   handleSaveSettings(ss, settings);
   return settings;
+}
+
+/**
+ * switchFirm: moves a document to a different firm.
+ *
+ * Drafts consume no official number, so switching a draft just re-homes it:
+ * the number is assigned from the new firm's counter on final save.
+ *
+ * Issued documents are re-issued under the TARGET firm's next number
+ * (backend-authoritative: max(stored counter, register max) + 1, prefix kept).
+ * The old number is left vacant in the source firm (a gap, which is allowed;
+ * duplicates are not). Runs under the script lock like save/delete so two
+ * concurrent moves can never take the same number.
+ */
+function handleSwitchFirm(ss, payload) {
+  return withScriptLock(function () { return handleSwitchFirmLocked(ss, payload); });
+}
+
+function handleSwitchFirmLocked(ss, payload) {
+  var docId = String(payload.docId || '').trim();
+  var targetFirmId = String(payload.targetFirmId || '').trim();
+  if (!docId) throw new Error('Missing document id.');
+  if (!targetFirmId) throw new Error('Missing target firm.');
+
+  var docsSheet = ss.getSheetByName('Documents');
+  var data = docsSheet.getDataRange().getValues();
+  var rowIdx = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === docId) { rowIdx = i + 1; break; }
+  }
+  if (rowIdx <= 0) throw new Error('Document not found. It may have been deleted by another user.');
+
+  var row = data[rowIdx - 1];
+  var status = String(row[18] || 'Active').toUpperCase();
+  if (status === 'CANCELLED') throw new Error('Cancelled documents cannot be moved to another firm.');
+  var sourceFirmId = String(row[3] || '').trim();
+  if (sourceFirmId === targetFirmId) throw new Error('This document is already under the selected firm.');
+  var docType = String(row[2] || 'BILL').toUpperCase();
+  var oldDocNo = String(row[1] || '');
+  var isDraft = status === 'DRAFT';
+  var sourceFirmName = String(row[4] || '');
+
+  var settings = loadSettings(ss);
+  var targetFirm = null;
+  if (settings && settings.firms) {
+    for (var f = 0; f < settings.firms.length; f++) {
+      if (String(settings.firms[f].id) === targetFirmId) { targetFirm = settings.firms[f]; break; }
+    }
+  }
+  if (!targetFirm) throw new Error('Target firm not found in settings.');
+  var targetFirmName = String(targetFirm.name || targetFirmId);
+
+  var newDocNo = oldDocNo;
+  if (!isDraft) {
+    // Backend-authoritative next number for the target firm.
+    var storedNo = docType === 'BILL' ? String(settings.nextBillNo || '101') : String(settings.nextQuoteNo || 'Q-201');
+    var firmStored = docType === 'BILL' ? String(targetFirm.nextBillNo || '') : String(targetFirm.nextQuoteNo || '');
+    if (numPart(firmStored) > numPart(storedNo)) storedNo = firmStored;
+    var prefix = storedNo.replace(/[0-9]/g, '');
+    if (!prefix && docType !== 'BILL') prefix = 'Q-';
+    var maxExisting = getMaxDocNo(ss, targetFirmId, docType);
+    // storedNo is the target firm's "next free" counter, so the next number is
+    // max(counter, register max + 1) — mirroring the save path exactly.
+    var candidate = Math.max(numPart(storedNo), maxExisting + 1);
+    // Defensive: never hand out a number the target firm already holds.
+    while (findDocByNumber(ss, targetFirmId, docType, candidate)) { candidate++; }
+    newDocNo = prefix + candidate;
+  }
+
+  // Re-home the row: firm + (for issued docs) the new number. Items are keyed
+  // by docId, so they move with the document untouched. Source counter is
+  // intentionally left alone: the old number becomes a vacant gap.
+  docsSheet.getRange(rowIdx, 4).setValue(targetFirmId);
+  docsSheet.getRange(rowIdx, 5).setValue(targetFirmName);
+  if (!isDraft) docsSheet.getRange(rowIdx, 2).setValue(newDocNo);
+  docsSheet.getRange(rowIdx, 20).setValue(new Date().toISOString());
+
+  if (!isDraft) {
+    updateSequenceCounter(ss, targetFirmId, docType, newDocNo, false);
+    settings = loadSettings(ss);
+  }
+
+  return {
+    ok: true,
+    docId: docId,
+    wasDraft: isDraft,
+    sourceFirmId: sourceFirmId,
+    sourceFirmName: sourceFirmName,
+    oldDocNo: oldDocNo,
+    newDocNo: newDocNo,
+    targetFirmId: targetFirmId,
+    targetFirmName: targetFirmName,
+    docType: docType,
+    settings: settings
+  };
 }
 
 // -------------------------------------------------------------------------

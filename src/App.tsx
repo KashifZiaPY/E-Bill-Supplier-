@@ -446,6 +446,32 @@ export default function App() {
     }
   };
 
+  const handleSwitchFirm = async (doc: DocumentRecord, targetFirmId: string) => {
+    const docId = String(doc.docId || doc.DocID || '').trim();
+    if (!docId) {
+      throw new Error('Could not identify this document.');
+    }
+    try {
+      const res = await gasApi.switchFirm(docId, targetFirmId);
+      await loadBootstrapData(); // reload the truthful register (firm + number changed)
+      const label = res?.wasDraft
+        ? `${res.docType || 'Document'} moved to ${res.targetFirmName || 'the other firm'} (draft — no number change).`
+        : `${res.docType || 'Document'} #${res.oldDocNo} is now ${res.targetFirmName} #${res.newDocNo}.`;
+      showToast(label, 'success');
+    } catch (err: any) {
+      console.error('switchFirm failed:', err);
+      await loadBootstrapData(); // restore the truthful register state
+      const msg = String(err?.message || '');
+      // Friendly guidance when the Apps Script backend predates this feature.
+      if (/unrecognized action/i.test(msg)) {
+        throw new Error(
+          'This needs backend v2.6.11+. In Apps Script, paste the latest Code.gs and use Deploy > New version, then retry.'
+        );
+      }
+      throw err; // surfaced inside the modal
+    }
+  };
+
   const handleDeleteDoc = async (doc: DocumentRecord, authorityPin?: string) => {
     const docId = String(doc.docId || doc.DocID || '').trim();
     const docType = String(doc.type || doc.Type || 'BILL').toUpperCase();
@@ -649,6 +675,7 @@ export default function App() {
           onMakeBillFromQuotation={handleMakeBillFromQuotation}
           onCancelDoc={handleCancelDoc}
           onDeleteDoc={handleDeleteDoc}
+          onSwitchFirm={handleSwitchFirm}
           onRefresh={loadBootstrapData}
           onLock={handleLock}
           onOpenAddClient={handleOpenAddClient}

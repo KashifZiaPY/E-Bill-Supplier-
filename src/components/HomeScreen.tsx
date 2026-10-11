@@ -34,6 +34,7 @@ import {
   Smartphone,
   Monitor,
   Globe,
+  ArrowRightLeft,
 } from 'lucide-react';
 import type { DocumentRecord, SavedClient, SupplierSettings } from '../types/billing';
 import { formatCurrency, formatDateDisplay, safeNormalizeItems } from '../utils/formatters';
@@ -41,6 +42,7 @@ import { isLastDocLIFO } from '../utils/lifoHelper';
 import { getFirmDashboardTheme } from '../utils/firmTheme';
 import { FirmBanner } from './FirmBanner';
 import { LifoDeleteModal } from './LifoDeleteModal';
+import { SwitchFirmModal } from './SwitchFirmModal';
 import {
   exportDocumentsToExcel,
   exportClientReportToExcel,
@@ -124,6 +126,7 @@ interface Props {
   onMakeBillFromQuotation: (doc: DocumentRecord) => void;
   onCancelDoc: (docId: string, authorityPin?: string) => Promise<void>;
   onDeleteDoc?: (doc: DocumentRecord, authorityPin?: string) => Promise<void>;
+  onSwitchFirm?: (doc: DocumentRecord, targetFirmId: string) => Promise<void>;
   deletePinRequired?: boolean;
   onRefresh: () => void;
   onLock: () => void;
@@ -158,6 +161,7 @@ export const HomeScreen: React.FC<Props> = ({
   onMakeBillFromQuotation,
   onCancelDoc,
   onDeleteDoc,
+  onSwitchFirm,
   deletePinRequired,
   onRefresh,
   onLock,
@@ -174,6 +178,8 @@ export const HomeScreen: React.FC<Props> = ({
 
   // LIFO Deletion state
   const [docToDeleteLifo, setDocToDeleteLifo] = useState<DocumentRecord | null>(null);
+  const [docToSwitchFirm, setDocToSwitchFirm] = useState<DocumentRecord | null>(null);
+  const [isSwitchingFirm, setIsSwitchingFirm] = useState(false);
   const [lifoMode, setLifoMode] = useState<'delete' | 'cancel'>('delete');
   const [isLifoModalOpen, setIsLifoModalOpen] = useState(false);
   const [isDeletingLifo, setIsDeletingLifo] = useState(false);
@@ -995,10 +1001,20 @@ export const HomeScreen: React.FC<Props> = ({
                                   <div className={`absolute right-0 ${isBottomEntry ? 'bottom-full mb-2' : 'top-full mt-1.5'} w-56 bg-white rounded-xl shadow-[0_16px_40px_-8px_rgba(12,28,51,0.3)] border border-line z-50 py-1.5 text-[13px] font-medium`}>
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); onDuplicateDoc(doc); }}
+                                     
                                       className="w-full px-3.5 py-2.5 text-left hover:bg-paper flex items-center gap-2.5 text-ink-700"
                                     >
                                       <Copy className="w-4 h-4 text-ink-400" /><span>Duplicate record</span>
                                     </button>
+                                    {!isCancelled && onSwitchFirm && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); setDocToSwitchFirm(doc); }}
+                                        className="w-full px-3.5 py-2.5 text-left hover:bg-paper flex items-center gap-2.5 text-ink-700"
+                                        title="Move this document to the other firm (re-numbered from that firm's counter)"
+                                      >
+                                        <ArrowRightLeft className="w-4 h-4 text-ink-400" /><span>Switch firm</span>
+                                      </button>
+                                    )}
                                     {docType === 'QUOTATION' && !isCancelled && (
                                       <button
                                         onClick={(e) => { e.stopPropagation(); setActiveMenuDocId(null); onMakeBillFromQuotation(doc); }}
@@ -1522,6 +1538,25 @@ export const HomeScreen: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {/* Switch firm modal */}
+      <SwitchFirmModal
+        isOpen={docToSwitchFirm !== null}
+        doc={docToSwitchFirm}
+        firms={firms}
+        onClose={() => { if (!isSwitchingFirm) setDocToSwitchFirm(null); }}
+        onConfirm={async (d, targetFirmId) => {
+          if (!onSwitchFirm) return;
+          setIsSwitchingFirm(true);
+          try {
+            await onSwitchFirm(d, targetFirmId);
+            setDocToSwitchFirm(null);
+          } finally {
+            setIsSwitchingFirm(false);
+          }
+        }}
+        isSwitching={isSwitchingFirm}
+      />
 
       {/* LIFO delete modal */}
       <LifoDeleteModal
