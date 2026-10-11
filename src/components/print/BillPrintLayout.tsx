@@ -170,18 +170,18 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
   // Intelligent Multi-Page Pagination
   const pageChunks: ItemRowWithSr[][] = [];
-  if (sequentialItems.length <= 12) {
+  if (sequentialItems.length <= 15) {
     pageChunks.push(sequentialItems);
   } else {
-    pageChunks.push(sequentialItems.slice(0, 10));
-    let remaining = sequentialItems.slice(10);
+    pageChunks.push(sequentialItems.slice(0, 14));
+    let remaining = sequentialItems.slice(14);
     while (remaining.length > 0) {
-      if (remaining.length <= 16) {
+      if (remaining.length <= 20) {
         pageChunks.push(remaining);
         break;
       } else {
-        pageChunks.push(remaining.slice(0, 16));
-        remaining = remaining.slice(16);
+        pageChunks.push(remaining.slice(0, 20));
+        remaining = remaining.slice(20);
       }
     }
   }
