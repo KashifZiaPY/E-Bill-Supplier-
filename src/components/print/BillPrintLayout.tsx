@@ -191,7 +191,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   return (
     <div
       className={`bill-sheet-wrapper w-full mx-auto text-black text-[10.5pt] leading-normal ${
-        isHashirStyle ? 'font-sans' : 'font-serif'
+        isHashirStyle ? 'font-sans' : 'font-serif firm-anwar-print'
       }`}
     >
       {pageChunks.map((chunk, pageIndex) => {

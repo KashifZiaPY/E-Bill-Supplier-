@@ -168,6 +168,15 @@
   }
 }
 
+/* Anwar Traders bill print: official Times New Roman typeface (user-approved).
+   Unlayered rule wins over Tailwind's layered font utilities; scoped to the
+   Anwar bill wrapper so Hashir's modern sans is untouched. */
+.bill-sheet-wrapper.firm-anwar-print,
+.bill-sheet-wrapper.firm-anwar-print .font-serif,
+.bill-sheet-wrapper.firm-anwar-print .font-mono {
+  font-family: "Times New Roman", Times, serif;
+}
+
 /* Interactive affordance: Tailwind preflight resets buttons to cursor:default,
    which hides the hand pointer on clickable cards/actions. Restore it. */
 button:not(:disabled) {
