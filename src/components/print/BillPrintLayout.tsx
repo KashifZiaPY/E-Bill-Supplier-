@@ -261,10 +261,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     {printOnLetterhead && (
                       <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2 mb-3">
                         <span className="text-sm font-black uppercase tracking-widest text-slate-900">
-                          COMMERCIAL INVOICE
+                          BILL
                         </span>
                         <div className="text-right font-mono text-sm font-bold">
-                          <span>BILL #{docNo} · {docDate}</span>
+                          <span>#{docNo} · {docDate}</span>
                         </div>
                       </div>
                     )}
@@ -325,24 +325,22 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       </div>
                     )}
 
-                    {/* Classic Title & Bill No Header */}
-                    <div className="flex justify-between items-baseline border-b border-black pb-1.5 mb-2.5">
-                      <div className="flex items-baseline gap-3">
-                        <span className="text-2xl font-black uppercase tracking-wider text-black font-serif">
+                    {/* Classic Title: BILL centered, Bill No left / Date right */}
+                    <div className="grid grid-cols-3 items-center border-b-2 border-black pb-1.5 mb-2.5">
+                      <div className="text-[10pt]">
+                        <span className="font-bold">Bill No: </span>
+                        <span className="font-bold font-mono px-2 py-0.5 bg-white border border-black">
+                          {docNo}
+                        </span>
+                      </div>
+                      <div className="text-center">
+                        <span className="text-2xl font-black uppercase tracking-[0.25em] mr-[-0.25em] text-black font-serif">
                           BILL
                         </span>
                       </div>
-                      <div className="text-right text-[10pt] space-y-0.5">
-                        <div>
-                          <span className="font-bold">Bill No: </span>
-                          <span className="font-bold font-mono px-2 py-0.5 bg-white border border-black">
-                            {docNo}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="font-bold">Date: </span>
-                          <span className="font-semibold">{docDate}</span>
-                        </div>
+                      <div className="text-[10pt] text-right">
+                        <span className="font-bold">Date: </span>
+                        <span className="font-semibold">{docDate}</span>
                       </div>
                     </div>
 
@@ -389,8 +387,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
             {/* Hashir: distinct centered document title band (Anwar uses the classic left/right title row above) */}
             {isHashirStyle && !printOnLetterhead && (
               <div className="border-y-2 border-slate-900 py-1.5 mb-2.5 text-center">
-                <span className="text-xl font-black uppercase tracking-[0.25em] text-slate-900 font-sans">
-                  Commercial Invoice
+                <span className="text-xl font-black uppercase tracking-[0.25em] mr-[-0.25em] text-slate-900 font-sans">
+                  Bill
                 </span>
               </div>
             )}
@@ -402,8 +400,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               <thead>
                 <tr className={`${
                   isHashirStyle
-                    ? 'bg-white text-slate-900 font-bold text-center text-[9.5pt] uppercase tracking-wider border-b-2 border-slate-900'
-                    : 'bg-white border-b-2 border-black text-center font-bold font-serif'
+                    ? 'bg-slate-100 text-slate-900 font-bold text-center text-[9.5pt] uppercase tracking-wider border-b-2 border-slate-900'
+                    : 'bg-gray-100 border-b-2 border-black text-center font-bold font-serif'
                 }`}>
                   <th className={`py-1.5 px-2 w-12 ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>{isHashirStyle ? 'S.No' : 'Sr.#'}</th>
                   <th className={`py-1.5 px-2 text-left ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>{isHashirStyle ? 'Particulars' : 'Description of Supplies / Services'}</th>
