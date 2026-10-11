@@ -312,11 +312,11 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         <h1 className="text-2xl font-black tracking-widest uppercase text-black font-serif">
                           {firmName}
                         </h1>
-                        <p className="text-xs font-bold text-gray-800 tracking-wider uppercase font-serif mt-0.5">
+                        <p className="text-xs font-bold text-black tracking-wider uppercase font-serif mt-0.5">
                           {firmTagline}
                         </p>
-                        <p className="text-xs text-gray-800 mt-0.5">{firmAddress}</p>
-                        <div className="flex flex-wrap justify-center gap-x-4 text-xs font-semibold text-gray-900 mt-1">
+                        <p className="text-xs text-black mt-0.5">{firmAddress}</p>
+                        <div className="flex flex-wrap justify-center gap-x-4 text-xs font-semibold text-black mt-1">
                           <span>Ph: {firmPhone}</span>
                           <span>NTN: {firmNTN}</span>
                           <span>GST No: {firmGST}</span>
@@ -335,7 +335,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       <div className="text-right text-[10pt] space-y-0.5">
                         <div>
                           <span className="font-bold">Bill No: </span>
-                          <span className="font-bold font-mono px-2 py-0.5 bg-white border border-black rounded">
+                          <span className="font-bold font-mono px-2 py-0.5 bg-white border border-black">
                             {docNo}
                           </span>
                         </div>
@@ -347,7 +347,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     </div>
 
                     {/* Traditional Boxed Client & Reference Block */}
-                    <div className="mb-2.5 space-y-1 text-[10pt] border border-black p-2.5 rounded bg-white">
+                    <div className="mb-2.5 space-y-1 text-[10pt] border-2 border-black p-2.5 bg-white">
                       <div className="flex items-start">
                         <span className="font-bold w-16 shrink-0">Name:</span>
                         <span className="font-semibold text-black">
@@ -364,7 +364,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       {refText && (
                         <div className="flex items-start">
                           <span className="font-bold w-16 shrink-0">Ref:</span>
-                          <span className="font-medium text-gray-900">{refText}</span>
+                          <span className="font-medium text-black">{refText}</span>
                         </div>
                       )}
                     </div>
@@ -378,7 +378,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   <span className="font-black text-sm uppercase tracking-wide">
                     BILL #{docNo} · <strong className="font-black">{firmName}</strong>
                   </span>
-                  <p className="text-[9.5pt] text-gray-700 font-medium">M/s {clientName} (Continued)</p>
+                  <p className="text-[9.5pt] text-black font-medium">M/s {clientName} (Continued)</p>
                 </div>
                 <div className="text-right text-xs font-bold">
                   <div>Date: {docDate}</div>
@@ -419,7 +419,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         </tr>
                       )}
                       <tr className={`border-b-2 ${isHashirStyle ? 'border-slate-400' : 'border-gray-500'} ${
-                        idx % 2 === 1 ? (isHashirStyle ? 'bg-slate-50/70' : 'bg-gray-100/90') : 'bg-white'
+                        idx % 2 === 1 && isHashirStyle ? 'bg-slate-50/70' : 'bg-white'
                       }`}>
                         <td className={`text-center py-1 px-1.5 font-mono font-bold text-xs ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
@@ -454,9 +454,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   <>
                     {goodsSub > 0 && (
                       <>
-                        <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                        <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
                           <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                           }`}>
                             Sub Total (Goods):
                           </td>
@@ -467,9 +467,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         {computed.gstBreakdown && computed.gstBreakdown.length > 1 ? (
                           <>
                             {computed.gstBreakdown.map((b) => (
-                              <tr key={b.ratePercent} className={`border-b ${isHashirStyle ? 'border-slate-300 bg-slate-50' : 'border-gray-400 bg-gray-100/70'} text-[9.5pt]`}>
+                              <tr key={b.ratePercent} className={`border-b ${isHashirStyle ? 'border-slate-300 bg-slate-50' : 'border-black bg-white'} text-[9.5pt]`}>
                                 <td colSpan={4} className={`text-right py-1 px-2.5 font-semibold ${
-                                  isHashirStyle ? 'border-r border-slate-300 text-slate-800' : 'border-r border-black text-gray-800'
+                                  isHashirStyle ? 'border-r border-slate-300 text-slate-800' : 'border-r border-black text-black'
                                 }`}>
                                   GST @ {b.ratePercent}% (on Rs. {formatCurrency(b.taxableAmount)}):
                                 </td>
@@ -478,9 +478,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                                 </td>
                               </tr>
                             ))}
-                            <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                            <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
                               <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                                isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                                isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                               }`}>
                                 Total GST on Goods:
                               </td>
@@ -490,9 +490,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                             </tr>
                           </>
                         ) : (
-                          <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                          <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
                             <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                              isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                              isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                             }`}>
                               {(computed.gstBreakdown?.[0]?.ratePercent ?? (isUniformGoodsRate ? uniformRate : gstPercent))}% GST on Goods:
                             </td>
@@ -506,9 +506,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
                     {serviceSub > 0 && (
                       <>
-                        <tr className={`border-t ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                        <tr className={`border-t ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
                           <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                           }`}>
                             Sub Total (Services):
                           </td>
@@ -516,9 +516,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                             {formatCurrency(serviceSub)}
                           </td>
                         </tr>
-                        <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-gray-100/90'} text-[10pt]`}>
+                        <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
                           <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-gray-900'
+                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                           }`}>
                             {pstPercent}% PST on Services:
                           </td>
@@ -542,7 +542,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       </tr>
                     ) : (
                       /* Anwar Traders Classic Govt Style Grand Total */
-                      <tr className="bg-gray-200 border-t-2 border-black border-b-[3px] border-b-black text-[12pt] sm:text-[12.5pt] font-black">
+                      <tr className="bg-white border-t-2 border-black border-b-[3px] border-b-black text-[12pt] sm:text-[12.5pt] font-black">
                         <td colSpan={4} className="border-r border-black text-right py-2.5 px-3 tracking-wider uppercase text-black font-black font-serif">
                           GRAND TOTAL (PKR):
                         </td>
@@ -557,7 +557,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
             </table>
 
             {!isLastPage && (
-              <div className="text-right text-xs italic font-bold text-gray-700 py-1">
+              <div className="text-right text-xs italic font-bold text-black py-1">
                 (Continued on next sheet...)
               </div>
             )}
@@ -565,10 +565,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
             {/* Amount in words & Signatures on Final Page */}
             {isLastPage && (
               <>
-                <div className={`p-2.5 mb-3 rounded text-[10pt] ${
+                <div className={`p-2.5 mb-3 text-[10pt] ${
                   isHashirStyle
-                    ? 'bg-slate-50 border border-slate-300 font-sans'
-                    : 'border border-black bg-white font-serif'
+                    ? 'bg-slate-50 border border-slate-300 font-sans rounded'
+                    : 'border-2 border-black bg-white font-serif'
                 }`}>
                   <span className="font-bold">In Words: </span>
                   <span className="font-semibold italic text-black">
@@ -598,18 +598,18 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                 ) : (
                   /* Anwar Traders Classic Govt Supplier Signatures */
                   <div className="flex justify-between items-end pt-3 mt-1 font-serif">
-                    <div className="text-[9pt] text-gray-700 max-w-md">
+                    <div className="text-[9pt] text-black max-w-md">
                       <p className="italic text-[8.5pt]">
                         Certified that the rates charged and quality of goods/services are as per Govt approved specifications.
                       </p>
-                      <span className="text-[8.5pt] text-gray-500 block mt-1">E. &amp; O.E.</span>
+                      <span className="text-[8.5pt] text-black block mt-1">E. &amp; O.E.</span>
                     </div>
                     <div className="text-center w-64">
                       <div className="border-b border-black mb-1 w-full"></div>
                       <p className="text-[10pt] font-black uppercase tracking-wider text-black">
                         For <span className="font-black">{firmName}</span>
                       </p>
-                      <p className="text-[8.5pt] text-gray-700">Proprietor / Signature &amp; Stamp</p>
+                      <p className="text-[8.5pt] text-black">Proprietor / Signature &amp; Stamp</p>
                     </div>
                   </div>
                 )}
@@ -617,9 +617,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
             )}
 
             {/* Bottom Page Footer on EVERY Sheet */}
-            <div className="flex justify-between items-center border-t border-gray-300 pt-1.5 mt-3 text-[8.5pt] text-gray-600">
+            <div className="flex justify-between items-center border-t border-black pt-1.5 mt-3 text-[8.5pt] text-black">
               <span>{firmName} · Bill #{docNo} · {clientName}</span>
-              <span className="font-bold text-gray-800">
+              <span className="font-bold text-black">
                 Page {currentPageNum} of {totalPages}
               </span>
             </div>
