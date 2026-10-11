@@ -170,18 +170,18 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
   // Intelligent Multi-Page Pagination
   const pageChunks: ItemRowWithSr[][] = [];
-  if (sequentialItems.length <= 8) {
+  if (sequentialItems.length <= 12) {
     pageChunks.push(sequentialItems);
   } else {
-    pageChunks.push(sequentialItems.slice(0, 7));
-    let remaining = sequentialItems.slice(7);
+    pageChunks.push(sequentialItems.slice(0, 10));
+    let remaining = sequentialItems.slice(10);
     while (remaining.length > 0) {
-      if (remaining.length <= 8) {
+      if (remaining.length <= 16) {
         pageChunks.push(remaining);
         break;
       } else {
-        pageChunks.push(remaining.slice(0, 12));
-        remaining = remaining.slice(12);
+        pageChunks.push(remaining.slice(0, 16));
+        remaining = remaining.slice(16);
       }
     }
   }
@@ -387,7 +387,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
             )}
 
             {/* Items Table */}
-            <table className={`w-full border-collapse text-[10pt] mb-2 bg-white ${
+            <table className={`w-full border-collapse text-[10pt] leading-[1.4] mb-2 bg-white ${
               isHashirStyle ? 'border border-slate-400' : 'border border-black'
             }`}>
               <thead>
@@ -413,7 +413,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                             ? 'bg-slate-100 border-t border-b border-slate-300 font-bold text-xs uppercase tracking-wide text-slate-900'
                             : 'bg-white border-t border-b border-black font-bold text-xs uppercase tracking-wide text-black'
                         }`}>
-                          <td colSpan={5} className="py-1.5 px-2.5">
+                          <td colSpan={5} className="py-1 px-2.5">
                             {it.sectionHeader}
                           </td>
                         </tr>
@@ -421,27 +421,27 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       <tr className={`border-b-2 ${isHashirStyle ? 'border-slate-400' : 'border-gray-500'} ${
                         idx % 2 === 1 ? (isHashirStyle ? 'bg-slate-50/70' : 'bg-gray-100/90') : 'bg-white'
                       }`}>
-                        <td className={`text-center py-1.5 px-1.5 font-mono font-bold text-xs ${
+                        <td className={`text-center py-1 px-1.5 font-mono font-bold text-xs ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
                           {it.sr}
                         </td>
-                        <td className={`text-left py-1.5 px-2 font-medium ${
+                        <td className={`text-left py-1 px-2 font-medium ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
                           {it.description}
                         </td>
-                        <td className={`text-center py-1.5 px-1.5 whitespace-nowrap ${
+                        <td className={`text-center py-1 px-1.5 whitespace-nowrap ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
                           {it.qty} {it.unit}
                         </td>
-                        <td className={`text-right py-1.5 px-2 whitespace-nowrap font-mono ${
+                        <td className={`text-right py-1 px-2 whitespace-nowrap font-mono ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
                           {formatCurrency(it.rate)}
                         </td>
-                        <td className="text-right py-1.5 px-2 font-bold whitespace-nowrap font-mono">
+                        <td className="text-right py-1 px-2 font-bold whitespace-nowrap font-mono">
                           {formatCurrency(it.amount)}
                         </td>
                       </tr>
