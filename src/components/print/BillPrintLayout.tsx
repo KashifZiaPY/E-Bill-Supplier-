@@ -217,7 +217,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         {/* Left: Brand Monogram & Corporate Identity */}
                         <div className="flex-1">
                           <div className="flex items-center gap-2.5 mb-1">
-                            <div className="w-10 h-10 rounded-lg bg-slate-900 text-white font-black text-base flex items-center justify-center font-sans tracking-tight shrink-0 shadow-sm">
+                            <div className="w-10 h-10 rounded-lg bg-white text-slate-900 border-2 border-slate-900 font-black text-base flex items-center justify-center font-sans tracking-tight shrink-0 shadow-sm">
                               HT
                             </div>
                             <div>
@@ -239,8 +239,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         </div>
 
                         {/* Right: Modern Document Badge Card */}
-                        <div className="text-right sm:w-56 shrink-0 bg-slate-50 border border-slate-300 rounded-xl p-2.5">
-                          <span className="inline-block text-[9px] font-black uppercase tracking-wider bg-slate-900 text-white px-2 py-0.5 rounded">
+                        <div className="text-right sm:w-56 shrink-0 bg-white border border-slate-300 rounded-xl p-2.5">
+                          <span className="inline-block text-[9px] font-black uppercase tracking-wider bg-white text-slate-900 border border-slate-900 px-2 py-0.5 rounded">
                             COMMERCIAL BILL / INVOICE
                           </span>
                           <div className="mt-1">
@@ -270,7 +270,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     )}
 
                     {/* Client & Reference Info Box: Modern Styled Card */}
-                    <div className="mb-3 p-3 rounded-xl border border-slate-300 bg-slate-50/80 text-[10pt] border-l-4 border-l-slate-900">
+                    <div className="mb-3 p-3 rounded-xl border border-slate-300 bg-white text-[10pt] border-l-4 border-l-slate-900">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div className="sm:col-span-2">
                           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">
@@ -393,7 +393,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               <thead>
                 <tr className={`${
                   isHashirStyle
-                    ? 'bg-slate-900 text-white font-bold text-center text-[9.5pt] uppercase tracking-wider'
+                    ? 'bg-white text-slate-900 font-bold text-center text-[9.5pt] uppercase tracking-wider border-b-2 border-slate-900'
                     : 'bg-white border-b-2 border-black text-center font-bold font-serif'
                 }`}>
                   <th className={`py-1.5 px-2 w-12 ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Sr.#</th>
@@ -410,7 +410,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       {it.sectionHeader && (
                         <tr className={`${
                           isHashirStyle
-                            ? 'bg-slate-100 border-t border-b border-slate-300 font-bold text-xs uppercase tracking-wide text-slate-900'
+                            ? 'bg-white border-t border-b border-slate-300 font-bold text-xs uppercase tracking-wide text-slate-900'
                             : 'bg-white border-t border-b border-black font-bold text-xs uppercase tracking-wide text-black'
                         }`}>
                           <td colSpan={5} className="py-1 px-2.5">
@@ -419,7 +419,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         </tr>
                       )}
                       <tr className={`border-b-2 ${isHashirStyle ? 'border-slate-400' : 'border-gray-500'} ${
-                        idx % 2 === 1 && isHashirStyle ? 'bg-slate-50/70' : 'bg-white'
+                        'bg-white'
                       }`}>
                         <td className={`text-center py-1 px-1.5 font-mono font-bold text-xs ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
@@ -454,7 +454,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   <>
                     {goodsSub > 0 && (
                       <>
-                        <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
+                        <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
                           <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
                             isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                           }`}>
@@ -467,7 +467,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         {computed.gstBreakdown && computed.gstBreakdown.length > 1 ? (
                           <>
                             {computed.gstBreakdown.map((b) => (
-                              <tr key={b.ratePercent} className={`border-b ${isHashirStyle ? 'border-slate-300 bg-slate-50' : 'border-black bg-white'} text-[9.5pt]`}>
+                              <tr key={b.ratePercent} className={`border-b ${isHashirStyle ? 'border-slate-300 bg-white' : 'border-black bg-white'} text-[9.5pt]`}>
                                 <td colSpan={4} className={`text-right py-1 px-2.5 font-semibold ${
                                   isHashirStyle ? 'border-r border-slate-300 text-slate-800' : 'border-r border-black text-black'
                                 }`}>
@@ -478,7 +478,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                                 </td>
                               </tr>
                             ))}
-                            <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
+                            <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
                               <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
                                 isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                               }`}>
@@ -490,7 +490,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                             </tr>
                           </>
                         ) : (
-                          <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
+                          <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
                             <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
                               isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                             }`}>
@@ -506,7 +506,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
                     {serviceSub > 0 && (
                       <>
-                        <tr className={`border-t ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
+                        <tr className={`border-t ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
                           <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
                             isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                           }`}>
@@ -516,7 +516,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                             {formatCurrency(serviceSub)}
                           </td>
                         </tr>
-                        <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-slate-100/80' : 'border-black bg-white'} text-[10pt]`}>
+                        <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
                           <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
                             isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
                           }`}>
@@ -532,11 +532,11 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     {/* GRAND TOTAL ROW: Distinctive Firm Presentation */}
                     {isHashirStyle ? (
                       /* Hashir Modern Corporate Style Grand Total */
-                      <tr className="bg-slate-900 text-white border-t-2 border-slate-950 text-[12pt] font-black">
+                      <tr className="bg-white text-slate-900 border-t-2 border-b-[3px] border-slate-900 text-[12pt] font-black">
                         <td colSpan={4} className="border-r border-slate-700 text-right py-3 px-3.5 tracking-wider uppercase">
                           TOTAL PAYABLE INVOICE AMOUNT (PKR):
                         </td>
-                        <td className="text-right py-3 px-3.5 whitespace-nowrap font-mono text-[13pt] font-black text-amber-300">
+                        <td className="text-right py-3 px-3.5 whitespace-nowrap font-mono text-[13pt] font-black text-slate-900">
                           Rs. {formatCurrency(grandTotal)}
                         </td>
                       </tr>
@@ -567,7 +567,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               <>
                 <div className={`p-2.5 mb-3 text-[10pt] ${
                   isHashirStyle
-                    ? 'bg-slate-50 border border-slate-300 font-sans rounded'
+                    ? 'bg-white border border-slate-300 font-sans rounded'
                     : 'border-2 border-black bg-white font-serif'
                 }`}>
                   <span className="font-bold">In Words: </span>
