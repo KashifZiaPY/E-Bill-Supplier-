@@ -261,7 +261,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     {printOnLetterhead && (
                       <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2 mb-3">
                         <span className="text-sm font-black uppercase tracking-widest text-slate-900">
-                          COMMERCIAL TAX INVOICE
+                          COMMERCIAL INVOICE
                         </span>
                         <div className="text-right font-mono text-sm font-bold">
                           <span>BILL #{docNo} · {docDate}</span>
@@ -376,13 +376,22 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               <div className="flex justify-between items-center border-b-2 border-black pb-1.5 mb-2.5 pt-1">
                 <div>
                   <span className="font-black text-sm uppercase tracking-wide">
-                    BILL #{docNo} · <strong className="font-black">{firmName}</strong>
+                    {isHashirStyle ? 'INVOICE' : 'BILL'} #{docNo} · <strong className="font-black">{firmName}</strong>
                   </span>
                   <p className="text-[9.5pt] text-black font-medium">M/s {clientName} (Continued)</p>
                 </div>
                 <div className="text-right text-xs font-bold">
                   <div>Date: {docDate}</div>
                 </div>
+              </div>
+            )}
+
+            {/* Hashir: distinct centered document title band (Anwar uses the classic left/right title row above) */}
+            {isHashirStyle && !printOnLetterhead && (
+              <div className="border-y-2 border-slate-900 py-1.5 mb-2.5 text-center">
+                <span className="text-xl font-black uppercase tracking-[0.25em] text-slate-900 font-sans">
+                  Commercial Invoice
+                </span>
               </div>
             )}
 
@@ -396,11 +405,11 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     ? 'bg-white text-slate-900 font-bold text-center text-[9.5pt] uppercase tracking-wider border-b-2 border-slate-900'
                     : 'bg-white border-b-2 border-black text-center font-bold font-serif'
                 }`}>
-                  <th className={`py-1.5 px-2 w-12 ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Sr.#</th>
-                  <th className={`py-1.5 px-2 text-left ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Description of Supplies / Services</th>
-                  <th className={`py-1.5 px-2 w-24 ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Qty</th>
-                  <th className={`py-1.5 px-2 w-24 text-right ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>Rate (Rs.)</th>
-                  <th className="py-1.5 px-2 w-28 text-right">Amount (Rs.)</th>
+                  <th className={`py-1.5 px-2 w-12 ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>{isHashirStyle ? 'S.No' : 'Sr.#'}</th>
+                  <th className={`py-1.5 px-2 text-left ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>{isHashirStyle ? 'Particulars' : 'Description of Supplies / Services'}</th>
+                  <th className={`py-1.5 px-2 w-24 ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>{isHashirStyle ? 'Quantity' : 'Qty'}</th>
+                  <th className={`py-1.5 px-2 w-24 text-right ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>{isHashirStyle ? 'Rate (PKR)' : 'Rate (Rs.)'}</th>
+                  <th className="py-1.5 px-2 w-28 text-right">{isHashirStyle ? 'Amount (PKR)' : 'Amount (Rs.)'}</th>
                 </tr>
               </thead>
               <tbody>
