@@ -6,6 +6,11 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    // Bake the deployed Git commit SHA into the bundle so the UI can show
+    // which exact code is live (same pattern as the accounts app).
+    define: {
+      __COMMIT_SHA__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev'),
+    },
     resolve: {
       alias: {
         '@': path.resolve('.'),

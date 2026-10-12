@@ -604,7 +604,8 @@ export const HomeScreen: React.FC<Props> = ({
               title="Google Sheet live connected · Click to refresh records"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>Synced · {docs.length} docs</span>
+              <span>Connected &amp; Live · {docs.length} docs</span>
+              <span className="opacity-50 font-mono font-normal">{`{${__COMMIT_SHA__.slice(0, 7)}}`}</span>
             </button>
 
             <button
