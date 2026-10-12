@@ -29,8 +29,6 @@ interface ItemRowWithSr {
 
 export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, topPadIn, bottomPadIn, fitToOnePage = false, showDateOnBill = true }) => {
   const rawItems = safeNormalizeItems(doc.items || doc.Items);
-  // Document title: per-bill override ("BILL", "INVOICE", "TAX INVOICE") for client preference; defaults to BILL.
-  const docTitle = String((doc as any).docTitle || (doc as any).DocTitle || 'BILL').toUpperCase();
   const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
     ? Number(doc.gstRate)
     : ((doc as any).GstRate !== undefined && Number((doc as any).GstRate) >= 0)
@@ -56,6 +54,12 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   const isHashirStyle = doc.firmId === 'firm-hashir-traders' ||
     (doc.firmName || '').toLowerCase().includes('hashir') ||
     firmObj?.styleTheme === 'MODERN_CORPORATE';
+
+  // Document title: Hashir-only per-client override ("BILL" or "INVOICE").
+  // Anwar always uses "BILL" (classic logic untouched).
+  const docTitle = isHashirStyle
+    ? String((doc as any).docTitle || (doc as any).DocTitle || 'BILL').toUpperCase()
+    : 'BILL';
 
   const firmName = doc.firmName || firmObj?.name || settings.supplierName || 'ANWAR TRADERS';
   const firmTagline = firmObj?.tagline || settings.supplierTagline || (isHashirStyle ? 'Govt. Contractor & General Order Supplier' : 'Govt. Contractor & General Order Supplier');
