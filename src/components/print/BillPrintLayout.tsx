@@ -212,12 +212,13 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   } else {
     pageChunks.push(takeFit(FIRST_MAX));
     while (remaining.length > 0) pageChunks.push(takeFit(LATER_MAX));
-    // The last page also carries the totals block (~5 slots); shift items off if tight.
+    // The last page also carries the totals block (~7 slots with section totals);
+    // shift items off if tight.
     while (pageChunks.length > 1) {
       const last = pageChunks[pageChunks.length - 1];
-      if (slotsOf(last) + 5 <= LATER_MAX) break;
+      if (slotsOf(last) + 7 <= LATER_MAX) break;
       const move: ItemRowWithSr[] = [];
-      while (last.length > 1 && slotsOf(last) + 5 > LATER_MAX) move.push(last.shift()!);
+      while (last.length > 1 && slotsOf(last) + 7 > LATER_MAX) move.push(last.shift()!);
       if (move.length === 0) break;
       pageChunks.splice(pageChunks.length - 1, 0, move);
     }
@@ -277,6 +278,17 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
           </td>
         </tr>
       )}
+      {/* Section total: goods inclusive of GST */}
+      <tr className={`border-y-2 ${isHashirStyle ? 'border-slate-900 bg-white' : 'border-black bg-white'} text-[10.5pt]`}>
+        <td colSpan={4} className={`text-right py-1.5 px-2.5 font-black ${
+          isHashirStyle ? 'border-r border-slate-500 text-slate-950' : 'border-r border-black text-black'
+        }`}>
+          Total (Goods incl. GST):
+        </td>
+        <td className="text-right py-1.5 px-2.5 font-black whitespace-nowrap font-mono text-black">
+          {formatCurrency(goodsSub + gst)}
+        </td>
+      </tr>
     </>
   );
 
@@ -300,6 +312,17 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
         </td>
         <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
           {formatCurrency(pst)}
+        </td>
+      </tr>
+      {/* Section total: services inclusive of PST */}
+      <tr className={`border-y-2 ${isHashirStyle ? 'border-slate-900 bg-white' : 'border-black bg-white'} text-[10.5pt]`}>
+        <td colSpan={4} className={`text-right py-1.5 px-2.5 font-black ${
+          isHashirStyle ? 'border-r border-slate-500 text-slate-950' : 'border-r border-black text-black'
+        }`}>
+          Total (Services incl. PST):
+        </td>
+        <td className="text-right py-1.5 px-2.5 font-black whitespace-nowrap font-mono text-black">
+          {formatCurrency(serviceSub + pst)}
         </td>
       </tr>
     </>
