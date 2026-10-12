@@ -69,12 +69,16 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
 
       {/* Main Title & Invoice Number */}
       <div className={`flex justify-between items-center ${isHashirStyle ? 'border-slate-800' : 'border-black'} border-b-2 pb-2 mb-3`}>
-        <div className={`${isHashirStyle ? 'text-2xl text-slate-900' : 'text-xl text-black'} font-black uppercase tracking-wider`}>
+        <div className={`${isHashirStyle ? 'text-2xl text-slate-900 self-center' : 'text-xl text-black'} font-black uppercase tracking-wider`}>
           SALES TAX INVOICE
         </div>
         <div className="text-right">
-          <div className={`font-mono font-bold text-sm ${isHashirStyle ? 'text-slate-900' : 'text-black'}`}>#{docNo}</div>
-          <div className={`text-xs font-semibold ${isHashirStyle ? 'text-slate-500' : 'text-black'}`}>{docDate}</div>
+          <div className={`text-sm ${isHashirStyle ? 'text-slate-900' : 'text-black'}`}>
+            <span className="font-semibold">Invoice No. </span>
+            <span className={`font-mono font-bold`}>{docNo}</span>
+          </div>
+          {isHashirStyle && <div className="border-t border-slate-300 my-1"></div>}
+          <div className={`text-xs font-semibold ${isHashirStyle ? 'text-slate-500' : 'text-black'}`}>Date: {docDate}</div>
         </div>
       </div>
 

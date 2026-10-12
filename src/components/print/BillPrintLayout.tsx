@@ -356,6 +356,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
       <style>{`
         .fit-compact table td { padding-top: 2px !important; padding-bottom: 2px !important; }
         .fit-compact .compact-mb { margin-bottom: 4px !important; }
+        .fit-compact { font-size: 9.5pt !important; }
+        .fit-compact .text-2xl { font-size: 1.25rem !important; }
       `}</style>
       {pageChunks.map((chunk, pageIndex) => {
         const isFirstPage = pageIndex === 0;
@@ -423,13 +425,17 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     {/* Letterhead ON: Modern Minimal Header Row for Hashir Traders */}
                     {printOnLetterhead && (
                       <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2 mb-3">
-                        <span className="text-2xl font-black uppercase tracking-widest text-slate-900">
+                        <span className="text-2xl font-black uppercase tracking-widest text-slate-900 self-center">
                           BILL
                         </span>
                         <div className="text-right">
-                          <div className="font-mono font-bold text-sm text-slate-900">#{docNo}</div>
+                          <div className="text-sm text-slate-900">
+                            <span className="font-semibold">Bill No. </span>
+                            <span className="font-mono font-bold">{docNo}</span>
+                          </div>
+                          <div className="border-t border-slate-300 my-1"></div>
                           <div className="text-xs text-slate-500 font-semibold">
-                            {showDateOnBill ? docDate : 'Date: ........................'}
+                            {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
                           </div>
                         </div>
                       </div>
