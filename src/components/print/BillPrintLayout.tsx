@@ -10,6 +10,10 @@ interface Props {
   /** Letterhead top/bottom padding in inches (from PreviewScreen). Used to adapt page capacity. */
   topPadIn?: number;
   bottomPadIn?: number;
+  /** When true, use compact spacing to try fitting a 2-page bill onto one page. Font stays >= 9.5pt. */
+  fitToOnePage?: boolean;
+  /** When false, the bill date prints blank (for handwriting); the stored date is kept for records. */
+  showDateOnBill?: boolean;
 }
 
 interface ItemRowWithSr {
@@ -23,7 +27,7 @@ interface ItemRowWithSr {
   sectionHeader?: string;
 }
 
-export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, topPadIn, bottomPadIn }) => {
+export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, topPadIn, bottomPadIn, fitToOnePage = false, showDateOnBill = true }) => {
   const rawItems = safeNormalizeItems(doc.items || doc.Items);
   const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
     ? Number(doc.gstRate)
@@ -177,7 +181,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   // Letterhead mode leaves less room -> slightly lower caps.
   // Long descriptions (>60 chars, wraps to 2 lines) count as 2 slots.
   // Reader ease is protected: text size and padding never shrink.
-  const SINGLE_MAX = printOnLetterhead ? 13 : 15;
+  // Fit-to-page: allow 2 extra items on a single page with compact spacing.
+  // Only meaningful when the bill would otherwise be 2 pages; font stays >= 9.5pt.
+  const SINGLE_MAX = (printOnLetterhead ? 13 : 15) + (fitToOnePage ? 2 : 0);
   const FIRST_MAX = printOnLetterhead ? 12 : 14;
   const LATER_MAX = printOnLetterhead ? 18 : 20;
 
@@ -404,7 +410,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                           </div>
                           <div className="mt-0.5 text-xs">
                             <span className="text-slate-500 font-semibold">Date: </span>
-                            <span className="font-bold text-slate-800">{docDate}</span>
+                            <span className="font-bold text-slate-800">{showDateOnBill ? docDate : '________'}</span>
                           </div>
                         </div>
                       </div>
@@ -493,7 +499,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       </div>
                       <div className="text-[10pt] text-right">
                         <span className="font-bold">Date: </span>
-                        <span className="font-semibold">{docDate}</span>
+                        <span className="font-semibold">{showDateOnBill ? docDate : '________'}</span>
                       </div>
                     </div>
 
@@ -532,7 +538,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   <p className="text-[9.5pt] text-black font-medium">M/s {clientName} (Continued)</p>
                 </div>
                 <div className="text-right text-xs font-bold">
-                  <div>Date: {docDate}</div>
+                  <div>Date: {showDateOnBill ? docDate : '________'}</div>
                 </div>
               </div>
             )}
