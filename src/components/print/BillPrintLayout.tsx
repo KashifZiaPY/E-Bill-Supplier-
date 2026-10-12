@@ -225,6 +225,98 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   }
 
   const totalPages = pageChunks.length;
+  const isSinglePage = totalPages === 1;
+
+  // Section subtotal row fragments — reused for interleaved (single-page) and grouped (multi-page) layouts.
+  const goodsSubtotalRows = goodsSub > 0 && (
+    <>
+      <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
+        <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+          isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
+        }`}>
+          Sub Total (Goods):
+        </td>
+        <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+          {formatCurrency(goodsSub)}
+        </td>
+      </tr>
+      {computed.gstBreakdown && computed.gstBreakdown.length > 1 ? (
+        <>
+          {computed.gstBreakdown.map((b) => (
+            <tr key={b.ratePercent} className={`border-b ${isHashirStyle ? 'border-slate-300 bg-white' : 'border-black bg-white'} text-[9.5pt]`}>
+              <td colSpan={4} className={`text-right py-1 px-2.5 font-semibold ${
+                isHashirStyle ? 'border-r border-slate-300 text-slate-800' : 'border-r border-black text-black'
+              }`}>
+                GST @ {b.ratePercent}% (on Rs. {formatCurrency(b.taxableAmount)}):
+              </td>
+              <td className="text-right py-1 px-2.5 font-semibold whitespace-nowrap font-mono text-black">
+                {formatCurrency(b.taxAmount)}
+              </td>
+            </tr>
+          ))}
+          <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
+            <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+              isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
+            }`}>
+              Total GST on Goods:
+            </td>
+            <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+              {formatCurrency(gst)}
+            </td>
+          </tr>
+        </>
+      ) : (
+        <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
+          <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
+          }`}>
+            {(computed.gstBreakdown?.[0]?.ratePercent ?? (isUniformGoodsRate ? uniformRate : gstPercent))}% GST on Goods:
+          </td>
+          <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+            {formatCurrency(gst)}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+
+  const servicesSubtotalRows = serviceSub > 0 && (
+    <>
+      <tr className={`border-t ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
+        <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+          isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
+        }`}>
+          Sub Total (Services):
+        </td>
+        <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+          {formatCurrency(serviceSub)}
+        </td>
+      </tr>
+      <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
+        <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+          isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
+        }`}>
+          {pstPercent}% PST on Services:
+        </td>
+        <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+          {formatCurrency(pst)}
+        </td>
+      </tr>
+    </>
+  );
+
+  const otherSubtotalRows = otherSub > 0 && (
+    <tr className={`border-t border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
+      <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+        isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
+      }`}>
+        Sub Total (Exempt / Other):
+      </td>
+      <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+        {formatCurrency(otherSub)}
+      </td>
+    </tr>
+  );
 
   return (
     <div
@@ -450,6 +542,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               </thead>
               <tbody>
                 {chunk.map((it, idx) => {
+                  // For single-page bills: render each section's subtotal directly beneath
+                  // its last item, so the subtotal sits under the relevant tax slot.
+                  const nextIt = chunk[idx + 1];
+                  const isLastOfSection = isSinglePage && (!nextIt || nextIt.tax !== it.tax);
                   return (
                     <React.Fragment key={it.sr}>
                       {it.sectionHeader && (
@@ -490,6 +586,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                           {formatCurrency(it.amount)}
                         </td>
                       </tr>
+                      {isLastOfSection && it.tax === 'GST' && goodsSubtotalRows}
+                      {isLastOfSection && it.tax === 'PST' && servicesSubtotalRows}
+                      {isLastOfSection && it.tax === 'None' && otherSubtotalRows}
                     </React.Fragment>
                   );
                 })}
@@ -497,96 +596,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                 {/* Subtotals & Grand Totals only on the LAST page */}
                 {isLastPage && (
                   <>
-                    {goodsSub > 0 && (
-                      <>
-                        <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-                          <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
-                          }`}>
-                            Sub Total (Goods):
-                          </td>
-                          <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
-                            {formatCurrency(goodsSub)}
-                          </td>
-                        </tr>
-                        {computed.gstBreakdown && computed.gstBreakdown.length > 1 ? (
-                          <>
-                            {computed.gstBreakdown.map((b) => (
-                              <tr key={b.ratePercent} className={`border-b ${isHashirStyle ? 'border-slate-300 bg-white' : 'border-black bg-white'} text-[9.5pt]`}>
-                                <td colSpan={4} className={`text-right py-1 px-2.5 font-semibold ${
-                                  isHashirStyle ? 'border-r border-slate-300 text-slate-800' : 'border-r border-black text-black'
-                                }`}>
-                                  GST @ {b.ratePercent}% (on Rs. {formatCurrency(b.taxableAmount)}):
-                                </td>
-                                <td className="text-right py-1 px-2.5 font-semibold whitespace-nowrap font-mono text-black">
-                                  {formatCurrency(b.taxAmount)}
-                                </td>
-                              </tr>
-                            ))}
-                            <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-                              <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                                isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
-                              }`}>
-                                Total GST on Goods:
-                              </td>
-                              <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
-                                {formatCurrency(gst)}
-                              </td>
-                            </tr>
-                          </>
-                        ) : (
-                          <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-                            <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                              isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
-                            }`}>
-                              {(computed.gstBreakdown?.[0]?.ratePercent ?? (isUniformGoodsRate ? uniformRate : gstPercent))}% GST on Goods:
-                            </td>
-                            <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
-                              {formatCurrency(gst)}
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    )}
-
-                    {serviceSub > 0 && (
-                      <>
-                        <tr className={`border-t ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-                          <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
-                          }`}>
-                            Sub Total (Services):
-                          </td>
-                          <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
-                            {formatCurrency(serviceSub)}
-                          </td>
-                        </tr>
-                        <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-                          <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                            isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
-                          }`}>
-                            {pstPercent}% PST on Services:
-                          </td>
-                          <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
-                            {formatCurrency(pst)}
-                          </td>
-                        </tr>
-                      </>
-                    )}
-
-                    {otherSub > 0 && (
-                      <tr className={`border-t border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-                        <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
-                          isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
-                        }`}>
-                          Sub Total (Exempt / Other):
-                        </td>
-                        <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
-                          {formatCurrency(otherSub)}
-                        </td>
-                      </tr>
-                    )}
-
+                    {/* Multi-page: group all subtotals here. Single-page: already interleaved above. */}
+                    {!isSinglePage && goodsSubtotalRows}
+                    {!isSinglePage && servicesSubtotalRows}
+                    {!isSinglePage && otherSubtotalRows}
                     {/* GRAND TOTAL ROW: Distinctive Firm Presentation */}
                     {isHashirStyle ? (
                       /* Hashir Modern Corporate Style Grand Total */
