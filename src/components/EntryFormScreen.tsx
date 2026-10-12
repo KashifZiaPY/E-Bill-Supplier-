@@ -130,10 +130,6 @@ export const EntryFormScreen: React.FC<Props> = ({
     return String(initialDoc?.date || initialDoc?.Date || formatDateISO());
   });
 
-  const [docTitle, setDocTitle] = useState<string>(() => {
-    return String(initialDoc?.docTitle || initialDoc?.DocTitle || 'BILL');
-  });
-
   const [validUntil, setValidUntil] = useState<string>(() => {
     return String(initialDoc?.validUntil || initialDoc?.ValidUntil || addDaysISO(formatDateISO(), 7));
   });
@@ -382,8 +378,6 @@ export const EntryFormScreen: React.FC<Props> = ({
     docNoManual: docNoManuallyEdited,
     date,
     Date: date,
-    docTitle: docType === 'BILL' && activeFirm.id === 'firm-hashir-traders' ? docTitle : 'BILL',
-    DocTitle: docType === 'BILL' && activeFirm.id === 'firm-hashir-traders' ? docTitle : 'BILL',
     validUntil: docType === 'QUOTATION' ? validUntil : undefined,
     ValidUntil: docType === 'QUOTATION' ? validUntil : undefined,
     clientName: trimmedClient,
@@ -646,19 +640,6 @@ export const EntryFormScreen: React.FC<Props> = ({
                 <span className="text-[11px] text-amber-700 font-semibold mt-1 block">Date can't be left empty — restored to today.</span>
               )}
             </div>
-            {docType === 'BILL' && activeFirm.id === 'firm-hashir-traders' && (
-              <div className="flex items-end pb-1">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={docTitle === 'INVOICE'}
-                    onChange={(e) => setDocTitle(e.target.checked ? 'INVOICE' : 'BILL')}
-                    className="w-4 h-4 rounded accent-navy-800 cursor-pointer"
-                  />
-                  <span className="text-xs font-bold text-ink-800">Title as INVOICE</span>
-                </label>
-              </div>
-            )}
             {docType === 'QUOTATION' ? (
               <div>
                 <label className="corp-label">Valid until</label>

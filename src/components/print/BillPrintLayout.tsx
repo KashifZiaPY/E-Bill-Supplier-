@@ -55,12 +55,6 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     (doc.firmName || '').toLowerCase().includes('hashir') ||
     firmObj?.styleTheme === 'MODERN_CORPORATE';
 
-  // Document title: Hashir-only per-client override ("BILL" or "INVOICE").
-  // Anwar always uses "BILL" (classic logic untouched).
-  const docTitle = isHashirStyle
-    ? String((doc as any).docTitle || (doc as any).DocTitle || 'BILL').toUpperCase()
-    : 'BILL';
-
   const firmName = doc.firmName || firmObj?.name || settings.supplierName || 'ANWAR TRADERS';
   const firmTagline = firmObj?.tagline || settings.supplierTagline || (isHashirStyle ? 'Govt. Contractor & General Order Supplier' : 'Govt. Contractor & General Order Supplier');
   const firmAddress = firmObj?.address || settings.supplierAddress;
@@ -425,18 +419,12 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     {/* Letterhead ON: Modern Minimal Header Row for Hashir Traders */}
                     {printOnLetterhead && (
                       <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2 mb-3">
-                        <span className="text-sm font-black uppercase tracking-widest text-slate-900">
-                          {docTitle}
+                        <span className="text-2xl font-black uppercase tracking-widest text-slate-900">
+                          BILL
                         </span>
-                        <div className="flex gap-5">
-                          <div className="text-right">
-                            <div className="text-[8px] uppercase tracking-widest text-slate-500 font-bold">Bill No.</div>
-                            <div className="font-mono font-black text-sm text-slate-900">#{docNo}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-[8px] uppercase tracking-widest text-slate-500 font-bold">Date</div>
-                            <div className="font-bold text-sm text-slate-900">{showDateOnBill ? docDate : '________'}</div>
-                          </div>
+                        <div className="text-right">
+                          <div className="font-mono font-bold text-sm text-slate-900">#{docNo}</div>
+                          <div className="text-xs text-slate-500 font-semibold">{showDateOnBill ? docDate : '________'}</div>
                         </div>
                       </div>
                     )}
@@ -507,7 +495,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       </div>
                       <div className="text-center">
                         <span className="text-2xl font-black uppercase tracking-[0.25em] mr-[-0.25em] text-black font-serif">
-                          {docTitle}
+                          BILL
                         </span>
                       </div>
                       <div className="text-[10pt] text-right">
@@ -546,7 +534,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               <div className="flex justify-between items-center border-b-2 border-black pb-1.5 mb-2.5 pt-1">
                 <div>
                   <span className="font-black text-sm uppercase tracking-wide">
-                    {docTitle} #{docNo} · <strong className="font-black">{firmName}</strong>
+                    {isHashirStyle ? 'INVOICE' : 'BILL'} #{docNo} · <strong className="font-black">{firmName}</strong>
                   </span>
                   <p className="text-[9.5pt] text-black font-medium">M/s {clientName} (Continued)</p>
                 </div>
