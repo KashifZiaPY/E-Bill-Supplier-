@@ -420,7 +420,13 @@ export const HomeScreen: React.FC<Props> = ({
     let billCount = 0;
     let quoteCount = 0;
 
-    for (const d of docs) {
+    // Firm-scoped: match the docs listing filter so cards reflect the visible firm
+    const scopedDocs = showAllFirms ? docs : docs.filter((d) => {
+      const fid = d.firmId || (String(d.firmName || '').toLowerCase().includes('hashir') ? 'firm-hashir-traders' : 'firm-anwar-traders');
+      return fid === activeFirmId;
+    });
+
+    for (const d of scopedDocs) {
       const isCancelled = String(d.status || d.Status || '').toLowerCase() === 'cancelled';
       if (isCancelled) continue;
 
@@ -440,7 +446,7 @@ export const HomeScreen: React.FC<Props> = ({
     }
 
     return { totalBilled, totalGst, totalPst, billCount, quoteCount };
-  }, [docs]);
+  }, [docs, showAllFirms, activeFirmId]);
 
   // Consolidated Client-Wise Billing Report Summaries
   const clientReportSummaries = useMemo<ClientReportSummary[]>(() => {
