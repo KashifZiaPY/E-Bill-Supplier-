@@ -204,7 +204,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     items.reduce((s, it) => s + slotCost(it), 0);
 
   const pageChunks: ItemRowWithSr[][] = [];
-  if (slotsOf(sequentialItems) <= SINGLE_MAX) {
+  // Single page if the item COUNT fits the cap and the weighted slots aren't
+  // excessively over (long wrapping descriptions). This keeps the verified
+  // 13–15 item single-page behaviour for normal bills.
+  if (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) <= SINGLE_MAX + 3) {
     pageChunks.push(sequentialItems);
   } else {
     pageChunks.push(takeFit(FIRST_MAX));
