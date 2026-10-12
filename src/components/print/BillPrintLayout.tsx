@@ -29,6 +29,8 @@ interface ItemRowWithSr {
 
 export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, topPadIn, bottomPadIn, fitToOnePage = false, showDateOnBill = true }) => {
   const rawItems = safeNormalizeItems(doc.items || doc.Items);
+  // Document title: per-bill override ("BILL", "INVOICE", "TAX INVOICE") for client preference; defaults to BILL.
+  const docTitle = String((doc as any).docTitle || (doc as any).DocTitle || 'BILL').toUpperCase();
   const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
     ? Number(doc.gstRate)
     : ((doc as any).GstRate !== undefined && Number((doc as any).GstRate) >= 0)
@@ -420,7 +422,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                     {printOnLetterhead && (
                       <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2 mb-3">
                         <span className="text-sm font-black uppercase tracking-widest text-slate-900">
-                          BILL
+                          {docTitle}
                         </span>
                         <div className="flex gap-5">
                           <div className="text-right">
@@ -501,7 +503,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       </div>
                       <div className="text-center">
                         <span className="text-2xl font-black uppercase tracking-[0.25em] mr-[-0.25em] text-black font-serif">
-                          BILL
+                          {docTitle}
                         </span>
                       </div>
                       <div className="text-[10pt] text-right">
@@ -540,7 +542,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               <div className="flex justify-between items-center border-b-2 border-black pb-1.5 mb-2.5 pt-1">
                 <div>
                   <span className="font-black text-sm uppercase tracking-wide">
-                    {isHashirStyle ? 'INVOICE' : 'BILL'} #{docNo} · <strong className="font-black">{firmName}</strong>
+                    {docTitle} #{docNo} · <strong className="font-black">{firmName}</strong>
                   </span>
                   <p className="text-[9.5pt] text-black font-medium">M/s {clientName} (Continued)</p>
                 </div>

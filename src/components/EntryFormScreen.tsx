@@ -130,6 +130,10 @@ export const EntryFormScreen: React.FC<Props> = ({
     return String(initialDoc?.date || initialDoc?.Date || formatDateISO());
   });
 
+  const [docTitle, setDocTitle] = useState<string>(() => {
+    return String(initialDoc?.docTitle || initialDoc?.DocTitle || 'BILL');
+  });
+
   const [validUntil, setValidUntil] = useState<string>(() => {
     return String(initialDoc?.validUntil || initialDoc?.ValidUntil || addDaysISO(formatDateISO(), 7));
   });
@@ -378,6 +382,8 @@ export const EntryFormScreen: React.FC<Props> = ({
     docNoManual: docNoManuallyEdited,
     date,
     Date: date,
+    docTitle: docType === 'BILL' ? docTitle : undefined,
+    DocTitle: docType === 'BILL' ? docTitle : undefined,
     validUntil: docType === 'QUOTATION' ? validUntil : undefined,
     ValidUntil: docType === 'QUOTATION' ? validUntil : undefined,
     clientName: trimmedClient,
@@ -640,6 +646,22 @@ export const EntryFormScreen: React.FC<Props> = ({
                 <span className="text-[11px] text-amber-700 font-semibold mt-1 block">Date can't be left empty — restored to today.</span>
               )}
             </div>
+            {docType === 'BILL' && (
+              <div>
+                <label className="corp-label">Document title</label>
+                <select
+                  value={docTitle}
+                  onChange={(e) => setDocTitle(e.target.value)}
+                  className="corp-input font-bold"
+                  title="Title printed at the top — some clients want INVOICE instead of BILL"
+                >
+                  <option value="BILL">BILL</option>
+                  <option value="INVOICE">INVOICE</option>
+                  <option value="TAX INVOICE">TAX INVOICE</option>
+                </select>
+                <span className="text-[11px] text-ink-400 mt-1 block">As per client preference</span>
+              </div>
+            )}
             {docType === 'QUOTATION' ? (
               <div>
                 <label className="corp-label">Valid until</label>

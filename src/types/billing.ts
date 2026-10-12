@@ -71,6 +71,9 @@ export interface DocumentRecord {
   ClientSTRN?: string;
   refText: string;
   RefText?: string;
+  /** Document title override: "BILL" (default), "INVOICE", or "TAX INVOICE" — per client preference. */
+  docTitle?: string;
+  DocTitle?: string;
   requestId?: string;
   RequestId?: string;
   items?: LineItem[];
