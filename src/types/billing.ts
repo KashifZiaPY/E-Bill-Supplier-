@@ -41,8 +41,8 @@ export interface FirmProfile {
   vendorNo: string;
   gstRate: number; // default 0.18
   pstRate: number; // default 0.16
-  letterheadTop: number; // default 2.5
-  letterheadBottom: number; // default 1.5
+  letterheadTop: number; // default 2.0
+  letterheadBottom: number; // default 1.0
   nextBillNo: string; // e.g. "101"
   nextQuoteNo: string; // e.g. "Q-201"
   styleTheme?: 'CLASSIC_GOVT' | 'MODERN_CORPORATE'; // Layout & typography style

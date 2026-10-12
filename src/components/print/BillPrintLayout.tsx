@@ -7,6 +7,9 @@ interface Props {
   doc: DocumentRecord;
   settings: SupplierSettings;
   printOnLetterhead: boolean;
+  /** Letterhead top/bottom padding in inches (from PreviewScreen). Used to adapt page capacity. */
+  topPadIn?: number;
+  bottomPadIn?: number;
 }
 
 interface ItemRowWithSr {
@@ -20,7 +23,7 @@ interface ItemRowWithSr {
   sectionHeader?: string;
 }
 
-export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead }) => {
+export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, topPadIn, bottomPadIn }) => {
   const rawItems = safeNormalizeItems(doc.items || doc.Items);
   const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
     ? Number(doc.gstRate)
@@ -38,6 +41,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   const gst = (doc.gst && doc.gst > 0) ? doc.gst : (doc.GST && doc.GST > 0) ? doc.GST : computed.gst;
   const serviceSub = (doc.serviceSub && doc.serviceSub > 0) ? doc.serviceSub : (doc.ServiceSub && doc.ServiceSub > 0) ? doc.ServiceSub : computed.serviceSub;
   const pst = (doc.pst && doc.pst > 0) ? doc.pst : (doc.PST && doc.PST > 0) ? doc.PST : computed.pst;
+  const otherSub = (doc.otherSub && doc.otherSub > 0) ? doc.otherSub : (doc.OtherSub && doc.OtherSub > 0) ? doc.OtherSub : computed.otherSub;
   const grandTotal = (doc.grandTotal && doc.grandTotal > 0) ? doc.grandTotal : (doc.GrandTotal && doc.GrandTotal > 0) ? doc.GrandTotal : computed.grandTotal;
 
   // Identify firm and styling personality
@@ -168,22 +172,53 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     }
   }
 
-  // Intelligent Multi-Page Pagination
+  // Intelligent Multi-Page Pagination.
+  // Verified count caps: 15 single / 14 first / 20 later (plain mode).
+  // Letterhead mode leaves less room -> slightly lower caps.
+  // Long descriptions (>60 chars, wraps to 2 lines) count as 2 slots.
+  // Reader ease is protected: text size and padding never shrink.
+  const SINGLE_MAX = printOnLetterhead ? 13 : 15;
+  const FIRST_MAX = printOnLetterhead ? 12 : 14;
+  const LATER_MAX = printOnLetterhead ? 18 : 20;
+
+  const CHARS_PER_LINE = isHashirStyle ? 48 : 55;
+  // Slot cost: 1 per item, +1 for each wrapped line beyond the first, +1 for a section header.
+  const slotCost = (it: ItemRowWithSr): number => {
+    const lines = Math.max(1, Math.ceil((it.description || '').length / CHARS_PER_LINE));
+    return 1 + (lines - 1) + (it.sectionHeader ? 1 : 0);
+  };
+
+  let remaining = [...sequentialItems];
+  const takeFit = (cap: number): ItemRowWithSr[] => {
+    const pg: ItemRowWithSr[] = [];
+    let used = 0;
+    while (remaining.length > 0 && used + slotCost(remaining[0]) <= cap) {
+      const it = remaining.shift()!;
+      pg.push(it);
+      used += slotCost(it);
+    }
+    if (pg.length === 0 && remaining.length > 0) pg.push(remaining.shift()!); // guarantee progress
+    return pg;
+  };
+  const slotsOf = (items: ItemRowWithSr[]): number =>
+    items.reduce((s, it) => s + slotCost(it), 0);
+
   const pageChunks: ItemRowWithSr[][] = [];
-  if (sequentialItems.length <= 15) {
+  if (slotsOf(sequentialItems) <= SINGLE_MAX) {
     pageChunks.push(sequentialItems);
   } else {
-    pageChunks.push(sequentialItems.slice(0, 14));
-    let remaining = sequentialItems.slice(14);
-    while (remaining.length > 0) {
-      if (remaining.length <= 20) {
-        pageChunks.push(remaining);
-        break;
-      } else {
-        pageChunks.push(remaining.slice(0, 20));
-        remaining = remaining.slice(20);
-      }
+    pageChunks.push(takeFit(FIRST_MAX));
+    while (remaining.length > 0) pageChunks.push(takeFit(LATER_MAX));
+    // The last page also carries the totals block (~5 slots); shift items off if tight.
+    while (pageChunks.length > 1) {
+      const last = pageChunks[pageChunks.length - 1];
+      if (slotsOf(last) + 5 <= LATER_MAX) break;
+      const move: ItemRowWithSr[] = [];
+      while (last.length > 1 && slotsOf(last) + 5 > LATER_MAX) move.push(last.shift()!);
+      if (move.length === 0) break;
+      pageChunks.splice(pageChunks.length - 1, 0, move);
     }
+    if (pageChunks.length === 1) pageChunks.push([]); // totals-only last page
   }
 
   const totalPages = pageChunks.length;
@@ -534,6 +569,19 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                           </td>
                         </tr>
                       </>
+                    )}
+
+                    {otherSub > 0 && (
+                      <tr className={`border-t border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
+                        <td colSpan={4} className={`text-right py-1.5 px-2.5 font-bold ${
+                          isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
+                        }`}>
+                          Sub Total (Exempt / Other):
+                        </td>
+                        <td className="text-right py-1.5 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+                          {formatCurrency(otherSub)}
+                        </td>
+                      </tr>
                     )}
 
                     {/* GRAND TOTAL ROW: Distinctive Firm Presentation */}

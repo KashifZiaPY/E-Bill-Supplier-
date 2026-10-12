@@ -295,8 +295,8 @@ export const HomeScreen: React.FC<Props> = ({
       vendorNo: settings.vendorNo,
       gstRate: settings.gstRate || 0.18,
       pstRate: settings.pstRate || 0.16,
-      letterheadTop: settings.letterheadTop || 2.5,
-      letterheadBottom: settings.letterheadBottom || 1.5,
+      letterheadTop: settings.letterheadTop || 2.0,
+      letterheadBottom: settings.letterheadBottom || 1.0,
       nextBillNo: settings.nextBillNo || '101',
       nextQuoteNo: settings.nextQuoteNo || 'Q-201',
     }

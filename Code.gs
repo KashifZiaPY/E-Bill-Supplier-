@@ -703,8 +703,8 @@ function handleSaveSettings(ss, payload) {
     settings.vendorNo || '',
     Number(settings.gstRate || 0.18),
     Number(settings.pstRate || 0.16),
-    Number(settings.letterheadTop || 2.5),
-    Number(settings.letterheadBottom || 1.5),
+    Number(settings.letterheadTop || 2.0),
+    Number(settings.letterheadBottom || 1.0),
     String(settings.nextBillNo || '101'),
     String(settings.nextQuoteNo || 'Q-201'),
     JSON.stringify(settings.firms || [])
@@ -744,8 +744,8 @@ function loadSettings(ss) {
     vendorNo: row[8] || '',
     gstRate: Number(row[9] || 0.18),
     pstRate: Number(row[10] || 0.16),
-    letterheadTop: Number(row[11] || 2.5),
-    letterheadBottom: Number(row[12] || 1.5),
+    letterheadTop: Number(row[11] || 2.0),
+    letterheadBottom: Number(row[12] || 1.0),
     nextBillNo: String(row[13] || '101'),
     nextQuoteNo: String(row[14] || 'Q-201'),
     firms: firms
@@ -1094,8 +1094,8 @@ function initSheetHeaders(sheet, name) {
         vendorNo: '31086205',
         gstRate: 0.18,
         pstRate: 0.16,
-        letterheadTop: 2.5,
-        letterheadBottom: 1.5,
+        letterheadTop: 2.0,
+        letterheadBottom: 1.0,
         nextBillNo: '101',
         nextQuoteNo: 'Q-201',
         styleTheme: 'CLASSIC_GOVT'
@@ -1111,8 +1111,8 @@ function initSheetHeaders(sheet, name) {
         vendorNo: '31241288',
         gstRate: 0.18,
         pstRate: 0.16,
-        letterheadTop: 2.5,
-        letterheadBottom: 1.5,
+        letterheadTop: 2.0,
+        letterheadBottom: 1.0,
         nextBillNo: '201',
         nextQuoteNo: 'HQ-101',
         styleTheme: 'MODERN_CORPORATE'

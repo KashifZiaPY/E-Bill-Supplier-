@@ -242,8 +242,8 @@ export const SettingsScreen: React.FC<Props> = ({
       vendorNo: formData.vendorNo,
       gstRate: formData.gstRate || 0.18,
       pstRate: formData.pstRate || 0.16,
-      letterheadTop: formData.letterheadTop || 2.5,
-      letterheadBottom: formData.letterheadBottom || 1.5,
+      letterheadTop: formData.letterheadTop || 2.0,
+      letterheadBottom: formData.letterheadBottom || 1.0,
       nextBillNo: formData.nextBillNo || '101',
       nextQuoteNo: formData.nextQuoteNo || 'Q-201',
     }
@@ -298,8 +298,8 @@ export const SettingsScreen: React.FC<Props> = ({
       vendorNo: '',
       gstRate: 0.18,
       pstRate: 0.16,
-      letterheadTop: 2.5,
-      letterheadBottom: 1.5,
+      letterheadTop: 2.0,
+      letterheadBottom: 1.0,
       nextBillNo: '101',
       nextQuoteNo: 'Q-101',
     };
@@ -519,7 +519,7 @@ export const SettingsScreen: React.FC<Props> = ({
                     <input
                       type="number" step="0.1" min="0.5" max="5"
                       value={currentFirm.letterheadTop}
-                      onChange={(e) => handleFirmChange('letterheadTop', parseFloat(e.target.value) || 2.5)}
+                      onChange={(e) => handleFirmChange('letterheadTop', parseFloat(e.target.value) || 2.0)}
                       className="corp-input font-mono font-bold"
                     />
                     <span className="text-[10px] text-ink-400 mt-1 block">Space for pre-printed header · default 2.5″</span>
@@ -529,7 +529,7 @@ export const SettingsScreen: React.FC<Props> = ({
                     <input
                       type="number" step="0.1" min="0.5" max="4"
                       value={currentFirm.letterheadBottom}
-                      onChange={(e) => handleFirmChange('letterheadBottom', parseFloat(e.target.value) || 1.5)}
+                      onChange={(e) => handleFirmChange('letterheadBottom', parseFloat(e.target.value) || 1.0)}
                       className="corp-input font-mono font-bold"
                     />
                     <span className="text-[10px] text-ink-400 mt-1 block">Space for signature / stamp · default 1.5″</span>

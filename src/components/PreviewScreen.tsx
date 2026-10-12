@@ -75,8 +75,8 @@ export const PreviewScreen: React.FC<Props> = ({
   };
 
   // Top and bottom margins (in inches)
-  const topMargin = printOnLetterhead ? (settings.letterheadTop || 2.5) : 0.4;
-  const bottomMargin = printOnLetterhead ? (settings.letterheadBottom || 1.5) : 0.4;
+  const topMargin = printOnLetterhead ? (settings.letterheadTop || 2.0) : 0.4;
+  const bottomMargin = printOnLetterhead ? (settings.letterheadBottom || 1.0) : 0.4;
 
   const currentFirmName = doc.firmName || settings.supplierName || 'Anwar Traders';
 
@@ -232,7 +232,7 @@ export const PreviewScreen: React.FC<Props> = ({
             paddingRight: '0.45in',
           }}
         >
-          {activeTab === 'BILL' && <BillPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
+          {activeTab === 'BILL' && <BillPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} topPadIn={topMargin} bottomPadIn={bottomMargin} />}
           {activeTab === 'GST' && <GstInvoicePrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
           {activeTab === 'QUOTATION' && <QuotationPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
         </div>
