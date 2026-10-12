@@ -118,7 +118,7 @@ function doGet(e) {
   return createJsonResponse({
     ok: true,
     service: 'Anwar Traders & Hashir Traders Billing Engine',
-    version: '2.6.11',
+    version: '2.6.12',
     timestamp: new Date().toISOString(),
     status: 'Ready'
   });
