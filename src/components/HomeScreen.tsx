@@ -172,6 +172,7 @@ export const HomeScreen: React.FC<Props> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CLIENTS' | 'REPORTS'>('DOCUMENTS');
   const [docFilter, setDocFilter] = useState<'ALL' | 'BILL' | 'QUOTATION'>('ALL');
+  const [showAllFirms, setShowAllFirms] = useState(false);
   const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
   const [drillDownClient, setDrillDownClient] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -308,14 +309,20 @@ export const HomeScreen: React.FC<Props> = ({
   const firmTheme = getFirmDashboardTheme(currentFirm);
 
   // Comprehensive Omnisearch Document Filtering (Search anything: Doc#, Bill#, Value, Client, Item, Ref, Date, Status, Firm)
+  // Plus firm scoping: default to active firm's docs only (easier LIFO check); toggle to see all firms.
   const filteredDocs = useMemo(() => {
     const rawQ = String(searchQuery || '').trim();
-    if (!rawQ && docFilter === 'ALL') return docs;
+    // Firm scoping first
+    const firmScoped = showAllFirms ? docs : docs.filter((d) => {
+      const fid = d.firmId || (String(d.firmName || '').toLowerCase().includes('hashir') ? 'firm-hashir-traders' : 'firm-anwar-traders');
+      return fid === activeFirmId;
+    });
+    if (!rawQ && docFilter === 'ALL') return firmScoped;
 
     const q = rawQ.toLowerCase();
     const cleanNum = rawQ.replace(/[^0-9.]/g, '');
 
-    return docs.filter((d) => {
+    return firmScoped.filter((d) => {
       const type = String(d.type || d.Type || 'BILL').toUpperCase();
       const matchesType = docFilter === 'ALL' || type === docFilter;
       if (!matchesType) return false;
@@ -387,7 +394,7 @@ export const HomeScreen: React.FC<Props> = ({
 
       return false;
     });
-  }, [docs, searchQuery, docFilter]);
+  }, [docs, searchQuery, docFilter, showAllFirms, activeFirmId]);
 
   // Comprehensive Safe Client Filtering matching Google Sheet schema
   const filteredClients = useMemo(() => {
@@ -858,6 +865,15 @@ export const HomeScreen: React.FC<Props> = ({
                       </button>
                     ))}
                   </div>
+                  <button
+                    onClick={() => setShowAllFirms(!showAllFirms)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                      showAllFirms ? 'bg-white text-ink-900 shadow-sm border-line' : 'bg-paper text-ink-500 border-line hover:text-ink-900'
+                    }`}
+                    title={showAllFirms ? 'Showing all firms — click to show only this firm' : `Showing only ${currentFirm.name} — click to show all firms`}
+                  >
+                    {showAllFirms ? 'All Firms' : currentFirm.name}
+                  </button>
                   <button
                     onClick={() => exportDocumentsToExcel(filteredDocs, currentFirm.name)}
                     className="corp-btn-ghost !py-2 text-emerald-700 !border-emerald-200 hover:!bg-emerald-50 text-xs"
