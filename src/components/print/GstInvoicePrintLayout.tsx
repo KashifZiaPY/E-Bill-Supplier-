@@ -70,20 +70,34 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
       )}
 
       {/* Main Title & Invoice Number */}
-      <div className={`flex justify-between items-stretch ${isHashirStyle ? 'border-slate-800' : 'border-black'} border-2 mb-3`}>
-        <div className={`flex items-center px-3 py-2 ${isHashirStyle ? 'text-[1.65rem] leading-none text-slate-900' : 'text-xl text-black'} font-black uppercase tracking-wider`}>
-          SALES TAX INVOICE
-        </div>
-        <div className={`flex flex-col justify-end text-right px-3 py-2 border-l-2 ${isHashirStyle ? 'border-slate-800' : 'border-black'}`}>
-          <div className={`text-sm mb-3 ${isHashirStyle ? 'text-slate-900' : 'text-black'}`}>
-            <span className="font-semibold">Invoice No. </span>
-            <span className={`font-mono font-bold`}>{docNo}</span>
+      {isHashirStyle ? (
+        <div className="flex justify-between items-stretch border-slate-800 border-2 mb-3">
+          <div className="flex items-center px-3 py-2 text-[1.65rem] leading-none text-slate-900 font-black uppercase tracking-wider">
+            SALES TAX INVOICE
           </div>
-          <div className={`text-xs font-semibold ${isHashirStyle ? 'text-slate-500' : 'text-black'}`}>
-            {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
+          <div className="flex flex-col justify-end text-right px-3 py-2 border-l-2 border-slate-800">
+            <div className="text-sm mb-3 text-slate-900">
+              <span className="font-semibold">Invoice No. </span>
+              <span className="font-mono font-bold">{docNo}</span>
+            </div>
+            <div className="text-xs font-semibold text-slate-500">
+              {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="text-center border-b-2 border-black pb-2 mb-3">
+          <div className="text-xl font-black uppercase tracking-wider text-black font-serif">
+            SALES TAX INVOICE
+          </div>
+          <div className="flex justify-center gap-6 mt-1 text-sm text-black font-serif">
+            <span><span className="font-semibold">Invoice No.: </span><span className="font-mono font-bold">{docNo}</span></span>
+            <span className="font-semibold">
+              {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Supplier & Buyer Two-Column Detail Box (Pure white, crisp black borders) */}
       <div className="border border-black rounded p-2 mb-2.5 text-[9.5pt] grid grid-cols-2 gap-3 bg-white">
