@@ -351,8 +351,12 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     <div
       className={`bill-sheet-wrapper w-full mx-auto text-black text-[10.5pt] leading-normal ${
         isHashirStyle ? 'font-sans' : 'font-serif firm-anwar-print'
-      }`}
+      } ${fitToOnePage ? 'fit-compact' : ''}`}
     >
+      <style>{`
+        .fit-compact table td { padding-top: 2px !important; padding-bottom: 2px !important; }
+        .fit-compact .compact-mb { margin-bottom: 4px !important; }
+      `}</style>
       {pageChunks.map((chunk, pageIndex) => {
         const isFirstPage = pageIndex === 0;
         const isLastPage = pageIndex === totalPages - 1;
