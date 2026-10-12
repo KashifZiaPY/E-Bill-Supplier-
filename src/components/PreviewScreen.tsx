@@ -130,6 +130,8 @@ export const PreviewScreen: React.FC<Props> = ({
           table { border-collapse: collapse !important; width: 100% !important; }
           .print-sheet:last-child { break-after: avoid !important; page-break-after: avoid !important; }
           .bill-sheet-wrapper { margin-bottom: 0 !important; padding-bottom: 0 !important; }
+          .min-h-screen { min-height: auto !important; }
+          .print-sheet { margin-bottom: 0 !important; }
           tr { break-inside: avoid !important; page-break-inside: avoid !important; }
         }
       `}</style>

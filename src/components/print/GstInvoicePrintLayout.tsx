@@ -71,15 +71,14 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
 
       {/* Main Title & Invoice Number */}
       <div className={`flex justify-between items-stretch ${isHashirStyle ? 'border-slate-800' : 'border-black'} border-2 mb-3`}>
-        <div className={`flex items-center px-3 py-2 ${isHashirStyle ? 'text-2xl text-slate-900' : 'text-xl text-black'} font-black uppercase tracking-wider`}>
+        <div className={`flex items-center px-3 py-2 ${isHashirStyle ? 'text-[1.65rem] leading-none text-slate-900' : 'text-xl text-black'} font-black uppercase tracking-wider`}>
           SALES TAX INVOICE
         </div>
-        <div className={`flex flex-col justify-center text-right px-3 py-2 border-l-2 ${isHashirStyle ? 'border-slate-800' : 'border-black'}`}>
-          <div className={`text-sm ${isHashirStyle ? 'text-slate-900' : 'text-black'}`}>
+        <div className={`flex flex-col justify-end text-right px-3 py-2 border-l-2 ${isHashirStyle ? 'border-slate-800' : 'border-black'}`}>
+          <div className={`text-sm mb-3 ${isHashirStyle ? 'text-slate-900' : 'text-black'}`}>
             <span className="font-semibold">Invoice No. </span>
             <span className={`font-mono font-bold`}>{docNo}</span>
           </div>
-          {isHashirStyle && <div className="border-t border-slate-300 my-1"></div>}
           <div className={`text-xs font-semibold ${isHashirStyle ? 'text-slate-500' : 'text-black'}`}>
             {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
           </div>
