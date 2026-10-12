@@ -410,7 +410,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                           </div>
                           <div className="mt-0.5 text-xs">
                             <span className="text-slate-500 font-semibold">Date: </span>
-                            <span className="font-bold text-slate-800">{showDateOnBill ? docDate : '________'}</span>
+                            <span className="font-bold text-slate-800">{showDateOnBill ? docDate : '........................'}</span>
                           </div>
                         </div>
                       </div>
@@ -424,7 +424,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         </span>
                         <div className="text-right">
                           <div className="font-mono font-bold text-sm text-slate-900">#{docNo}</div>
-                          <div className="text-xs text-slate-500 font-semibold">{showDateOnBill ? docDate : '________'}</div>
+                          <div className="text-xs text-slate-500 font-semibold">
+                            {showDateOnBill ? docDate : 'Date: ........................'}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -500,7 +502,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       </div>
                       <div className="text-[10pt] text-right">
                         <span className="font-bold">Date: </span>
-                        <span className="font-semibold">{showDateOnBill ? docDate : '________'}</span>
+                        <span className="font-semibold">{showDateOnBill ? docDate : '........................'}</span>
                       </div>
                     </div>
 
@@ -539,7 +541,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   <p className="text-[9.5pt] text-black font-medium">M/s {clientName} (Continued)</p>
                 </div>
                 <div className="text-right text-xs font-bold">
-                  <div>Date: {showDateOnBill ? docDate : '________'}</div>
+                  <div>Date: {showDateOnBill ? docDate : '........................'}</div>
                 </div>
               </div>
             )}
