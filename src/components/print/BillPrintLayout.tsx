@@ -422,8 +422,15 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         <span className="text-sm font-black uppercase tracking-widest text-slate-900">
                           BILL
                         </span>
-                        <div className="text-right font-mono text-sm font-bold">
-                          <span>#{docNo} · {docDate}</span>
+                        <div className="flex gap-5">
+                          <div className="text-right">
+                            <div className="text-[8px] uppercase tracking-widest text-slate-500 font-bold">Bill No.</div>
+                            <div className="font-mono font-black text-sm text-slate-900">#{docNo}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[8px] uppercase tracking-widest text-slate-500 font-bold">Date</div>
+                            <div className="font-bold text-sm text-slate-900">{showDateOnBill ? docDate : '________'}</div>
+                          </div>
                         </div>
                       </div>
                     )}
