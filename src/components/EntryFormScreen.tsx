@@ -152,6 +152,9 @@ export const EntryFormScreen: React.FC<Props> = ({
 
   const [formError, setFormError] = useState<string>('');
   const [attemptedSubmit, setAttemptedSubmit] = useState<boolean>(false);
+  // Shown briefly when an emptied Date field is restored to today (bill date
+  // must never be blank: it is the stored preparation date used by reports).
+  const [dateRestoredNote, setDateRestoredNote] = useState<boolean>(false);
 
   // Dropdown states & Outside-click Refs
   const [showClientDropdown, setShowClientDropdown] = useState(false);
@@ -462,6 +465,14 @@ export const EntryFormScreen: React.FC<Props> = ({
   // Submit Handler
   const handleSubmit = async (previewAfter: boolean) => {
     setAttemptedSubmit(true);
+    // Belt-and-braces: the date field can no longer be cleared in the UI, but
+    // a blank date must never reach the save path either (backend would stamp
+    // the server's UTC date, which can differ from the local preparation date).
+    const effectiveDate = date || formatDateISO();
+    if (!date) {
+      setDate(effectiveDate);
+      setDateRestoredNote(true);
+    }
     const trimmedClient = clientName.trim();
     if (!trimmedClient) {
       setFormError('Client Name is required. Please type or select a client.');
@@ -493,7 +504,7 @@ export const EntryFormScreen: React.FC<Props> = ({
       }
     }
 
-    await onSave(buildDocPayload(), previewAfter);
+    await onSave({ ...buildDocPayload(), date: effectiveDate, Date: effectiveDate }, previewAfter);
   };
 
   return (
@@ -611,9 +622,23 @@ export const EntryFormScreen: React.FC<Props> = ({
               <input
                 type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) {
+                    // Bill date is the stored preparation date (reports depend
+                    // on it) — never allow it to stay empty.
+                    setDate(formatDateISO());
+                    setDateRestoredNote(true);
+                  } else {
+                    setDate(v);
+                    setDateRestoredNote(false);
+                  }
+                }}
                 className="corp-input font-semibold"
               />
+              {dateRestoredNote && (
+                <span className="text-[11px] text-amber-700 font-semibold mt-1 block">Date can't be left empty — restored to today.</span>
+              )}
             </div>
             {docType === 'QUOTATION' ? (
               <div>
