@@ -7,9 +7,11 @@ interface Props {
   doc: DocumentRecord;
   settings: SupplierSettings;
   printOnLetterhead: boolean;
+  showDateOnBill?: boolean;
+  fitToOnePage?: boolean;
 }
 
-export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead }) => {
+export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, showDateOnBill = true, fitToOnePage = false }) => {
   const items = safeNormalizeItems(doc.items || doc.Items);
   const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
     ? Number(doc.gstRate)
@@ -68,17 +70,19 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
       )}
 
       {/* Main Title & Invoice Number */}
-      <div className={`flex justify-between items-center ${isHashirStyle ? 'border-slate-800' : 'border-black'} border-b-2 pb-2 mb-3`}>
-        <div className={`${isHashirStyle ? 'text-2xl text-slate-900 self-center' : 'text-xl text-black'} font-black uppercase tracking-wider`}>
+      <div className={`flex justify-between items-stretch ${isHashirStyle ? 'border-slate-800' : 'border-black'} border-2 mb-3`}>
+        <div className={`flex items-center px-3 py-2 ${isHashirStyle ? 'text-2xl text-slate-900' : 'text-xl text-black'} font-black uppercase tracking-wider`}>
           SALES TAX INVOICE
         </div>
-        <div className="text-right">
+        <div className={`flex flex-col justify-center text-right px-3 py-2 border-l-2 ${isHashirStyle ? 'border-slate-800' : 'border-black'}`}>
           <div className={`text-sm ${isHashirStyle ? 'text-slate-900' : 'text-black'}`}>
             <span className="font-semibold">Invoice No. </span>
             <span className={`font-mono font-bold`}>{docNo}</span>
           </div>
           {isHashirStyle && <div className="border-t border-slate-300 my-1"></div>}
-          <div className={`text-xs font-semibold ${isHashirStyle ? 'text-slate-500' : 'text-black'}`}>Date: {docDate}</div>
+          <div className={`text-xs font-semibold ${isHashirStyle ? 'text-slate-500' : 'text-black'}`}>
+            {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
+          </div>
         </div>
       </div>
 

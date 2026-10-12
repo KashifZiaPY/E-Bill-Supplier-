@@ -424,11 +424,13 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
                     {/* Letterhead ON: Modern Minimal Header Row for Hashir Traders */}
                     {printOnLetterhead && (
-                      <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2 mb-3">
-                        <span className="text-2xl font-black uppercase tracking-widest text-slate-900 self-center">
-                          BILL
-                        </span>
-                        <div className="text-right">
+                      <div className="flex justify-between items-stretch border-2 border-slate-800 mb-3">
+                        <div className="flex items-center px-3 py-2">
+                          <span className="text-2xl font-black uppercase tracking-widest text-slate-900">
+                            BILL
+                          </span>
+                        </div>
+                        <div className="flex flex-col justify-center text-right px-3 py-2 border-l-2 border-slate-800">
                           <div className="text-sm text-slate-900">
                             <span className="font-semibold">Bill No. </span>
                             <span className="font-mono font-bold">{docNo}</span>

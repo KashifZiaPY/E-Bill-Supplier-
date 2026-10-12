@@ -128,6 +128,8 @@ export const PreviewScreen: React.FC<Props> = ({
             background: #ffffff !important;
           }
           table { border-collapse: collapse !important; width: 100% !important; }
+          .print-sheet:last-child { break-after: avoid !important; page-break-after: avoid !important; }
+          .bill-sheet-wrapper { margin-bottom: 0 !important; padding-bottom: 0 !important; }
           tr { break-inside: avoid !important; page-break-inside: avoid !important; }
         }
       `}</style>
@@ -262,7 +264,7 @@ export const PreviewScreen: React.FC<Props> = ({
           }}
         >
           {activeTab === 'BILL' && <BillPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} topPadIn={topMargin} bottomPadIn={bottomMargin} fitToOnePage={fitToOnePage} showDateOnBill={showDateOnBill} />}
-          {activeTab === 'GST' && <GstInvoicePrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
+          {activeTab === 'GST' && <GstInvoicePrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} showDateOnBill={showDateOnBill} fitToOnePage={fitToOnePage} />}
           {activeTab === 'QUOTATION' && <QuotationPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
         </div>
       </div>
