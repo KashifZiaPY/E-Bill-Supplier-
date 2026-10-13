@@ -1,6 +1,6 @@
 import React from 'react';
 import type { DocumentRecord, SupplierSettings } from '../../types/billing';
-import { calculateTotals, formatCurrency, formatDateDisplay, safeNormalizeItems } from '../../utils/formatters';
+import { calculateTotals, formatCurrency, formatDateDisplay, safeNormalizeItems, toProperCase } from '../../utils/formatters';
 import { numberToWordsPakistani } from '../../utils/numberToWords';
 
 interface Props {
@@ -436,7 +436,7 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
                         <td className={`text-left py-1.5 px-2 font-medium ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
-                          {it.description}
+                          {toProperCase(it.description)}
                         </td>
                         <td className={`text-center py-1.5 px-1.5 whitespace-nowrap ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'

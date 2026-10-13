@@ -266,3 +266,16 @@ export function calculateTotals(
     gstBreakdown,
   };
 }
+
+/**
+ * Proper case for printed item/supplies names: first letter of each word
+ * capitalized, the rest lowercased — regardless of the case typed at entry.
+ * Stored data is never changed; this is applied at print render only.
+ * Letters after a digit are left alone ("3mp" stays "3mp", "3/29" unchanged).
+ */
+export function toProperCase(text: string | undefined | null): string {
+  if (!text) return '';
+  return String(text)
+    .toLowerCase()
+    .replace(/(^|[\s\-/'"(])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
+}
