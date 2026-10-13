@@ -694,9 +694,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   /* Hashir Traders Modern Corporate Signatures */
                   <div className="flex justify-between items-end pt-3 mt-1 font-sans">
                     <div className="text-[9pt] text-slate-500 max-w-sm">
-                      <p className="font-bold text-slate-700 text-[9pt]">E. &amp; O.E.</p>
-                      <p className="text-[8pt] text-slate-600 mt-0.5">
-                        Errors and omissions excepted.
+                      <p className="font-bold text-slate-700 uppercase tracking-wider text-[8.5pt]">
+                        Errors and Omissions Excepted
                       </p>
                     </div>
                     <div className="text-center w-64">
