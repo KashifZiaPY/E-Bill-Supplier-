@@ -12,6 +12,8 @@ import type { FirmProfile } from '../types/billing';
  * - MODERN_CORPORATE (Hashir Traders): deep emerald
  */
 export interface FirmDashboardTheme {
+  /** Extracted letterhead logo for the active firm (web UI only, never printed) */
+  logoSrc: string;
   header: string;
   accentBar: string;
   logoTile: string;
@@ -31,6 +33,7 @@ export interface FirmDashboardTheme {
 }
 
 const CLASSIC_GOVT_THEME: FirmDashboardTheme = {
+  logoSrc: '/logos/anwar-logo.png',
   header: 'bg-navy-950',
   accentBar: 'bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700',
   logoTile: 'border-gold-500/50 text-gold-400',
@@ -48,6 +51,7 @@ const CLASSIC_GOVT_THEME: FirmDashboardTheme = {
 };
 
 const MODERN_CORPORATE_THEME: FirmDashboardTheme = {
+  logoSrc: '/logos/hashir-logo.png',
   header: 'bg-emerald-950',
   accentBar: 'bg-gradient-to-r from-emerald-700 via-emerald-400 to-emerald-700',
   logoTile: 'border-emerald-500/50 text-emerald-300',

@@ -576,8 +576,8 @@ export const HomeScreen: React.FC<Props> = ({
         <div className={`h-0.5 ${firmTheme.accentBar}`} />
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className={`w-11 h-11 rounded-xl bg-white/5 border flex items-center justify-center font-extrabold text-lg ${firmTheme.logoTile}`}>
-              FA
+            <div className="w-11 h-11 rounded-xl bg-white border border-white/40 flex items-center justify-center overflow-hidden shrink-0">
+              <img src={firmTheme.logoSrc} alt={currentFirm.name} className="w-full h-full object-contain p-[3px]" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -668,8 +668,8 @@ export const HomeScreen: React.FC<Props> = ({
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
           <div className="corp-card p-4">
             <div className="flex items-center gap-2.5">
-              <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${firmTheme.entityTile}`}>
-                <Building2 className="w-4.5 h-4.5" />
+              <span className="w-9 h-9 rounded-lg bg-white border border-line flex items-center justify-center shrink-0 overflow-hidden">
+                <img src={firmTheme.logoSrc} alt={currentFirm.name} className="w-full h-full object-contain p-[2px]" />
               </span>
               <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500 leading-tight">Active<br />Entity</span>
             </div>

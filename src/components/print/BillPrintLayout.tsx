@@ -547,7 +547,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               <div className="flex justify-between items-center border-b-2 border-black pb-1.5 mb-2.5 pt-1">
                 <div>
                   <span className="font-black text-sm uppercase tracking-wide">
-                    {isHashirStyle ? 'INVOICE' : 'BILL'} #{docNo} · <strong className="font-black">{firmName}</strong>
+                    BILL #{docNo} · <strong className="font-black">{firmName}</strong>
                   </span>
                   <p className="text-[9.5pt] text-black font-medium">M/s {clientName} (Continued)</p>
                 </div>
