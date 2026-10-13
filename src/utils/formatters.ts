@@ -267,15 +267,34 @@ export function calculateTotals(
   };
 }
 
+/** Trade short forms that always print in CAPITALS (built into the app —
+ *  the user never has to maintain this list; it also normalizes them when
+ *  typed in small letters: "pvc pipe" prints as "PVC Pipe"). */
+const KEEP_UPPERCASE = new Set([
+  'PVC', 'UPVC', 'HDPE', 'PPRC', 'CCTV', 'LED', 'LCD', 'CP', 'GI', 'MS',
+  'AC', 'DC', 'MCB', 'RCCB', 'ELCB', 'SMD', 'UPS', 'RO',
+]);
+
 /**
- * Proper case for printed item/supplies names: first letter of each word
- * capitalized, the rest lowercased — regardless of the case typed at entry.
- * Stored data is never changed; this is applied at print render only.
- * Letters after a digit are left alone ("3mp" stays "3mp", "3/29" unchanged).
+ * Proper case for printed item/supplies names, regardless of the case typed
+ * at entry. Stored data is never changed; applied at print render only.
+ * Rules: built-in short forms always print in CAPITALS; any other word the
+ * user typed in CAPITALS inside a normally-typed name is kept in capitals
+ * (treated as a deliberate short form, e.g. "DABI"); if the WHOLE name was
+ * typed in capitals, everything is proper-cased. Letters right after a digit
+ * stay exactly as typed ("3mp", "3/29" unchanged).
  */
 export function toProperCase(text: string | undefined | null): string {
   if (!text) return '';
-  return String(text)
-    .toLowerCase()
-    .replace(/(^|[\s\-/'"(])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
+  const s = String(text);
+  const runs = s.match(/\p{L}+/gu) ?? [];
+  const wholeInCaps = runs.length > 0 && runs.every((w) => w === w.toUpperCase());
+  return s.replace(/\p{L}+/gu, (word: string, offset: number) => {
+    const before = offset > 0 ? s[offset - 1] : '';
+    if (/\d/.test(before)) return word;
+    const upper = word.toUpperCase();
+    if (KEEP_UPPERCASE.has(upper)) return upper;
+    if (!wholeInCaps && word.length >= 2 && word === upper) return word;
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
 }
