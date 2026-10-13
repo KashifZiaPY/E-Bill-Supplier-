@@ -576,8 +576,8 @@ export const HomeScreen: React.FC<Props> = ({
         <div className={`h-0.5 ${firmTheme.accentBar}`} />
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white border border-white/40 flex items-center justify-center overflow-hidden shrink-0">
-              <img src={firmTheme.logoSrc} alt={currentFirm.name} className="w-full h-full object-contain p-[3px]" />
+            <div className={`w-11 h-11 rounded-xl bg-white/5 border flex items-center justify-center font-extrabold text-lg ${firmTheme.logoTile}`}>
+              FA
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
