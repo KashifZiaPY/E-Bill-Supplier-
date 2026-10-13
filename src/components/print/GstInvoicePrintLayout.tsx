@@ -52,7 +52,7 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
 
   return (
     <div className={`gst-invoice-sheet text-black text-[10pt] leading-tight mx-auto bg-white w-full print:bg-white print:text-black ${
-      isHashirStyle ? 'font-sans' : 'font-serif'
+      isHashirStyle ? 'font-sans' : 'font-serif firm-anwar-print'
     }`}>
       {/* If Letterhead OFF: Show Supplier Header */}
       {!printOnLetterhead && (

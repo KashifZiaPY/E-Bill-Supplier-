@@ -694,9 +694,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   /* Hashir Traders Modern Corporate Signatures */
                   <div className="flex justify-between items-end pt-3 mt-1 font-sans">
                     <div className="text-[9pt] text-slate-500 max-w-sm">
-                      <p className="font-bold text-slate-700 uppercase tracking-wider text-[8.5pt]">Terms &amp; Certification</p>
+                      <p className="font-bold text-slate-700 text-[9pt]">E. &amp; O.E.</p>
                       <p className="text-[8pt] text-slate-600 mt-0.5">
-                        Computer generated commercial tax invoice for supplies delivered in accordance with purchase order.
+                        Errors and omissions excepted.
                       </p>
                     </div>
                     <div className="text-center w-64">
@@ -713,10 +713,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   /* Anwar Traders Classic Govt Supplier Signatures */
                   <div className="flex justify-between items-end pt-3 mt-1 font-serif">
                     <div className="text-[9pt] text-black max-w-md">
-                      <p className="italic text-[8.5pt]">
-                        Certified that the rates charged and quality of goods/services are as per Govt approved specifications.
-                      </p>
-                      <span className="text-[8.5pt] text-black block mt-1">E. &amp; O.E.</span>
+                      <span className="text-[8.5pt] text-black block">E. &amp; O.E.</span>
                     </div>
                     <div className="text-center w-64">
                       <div className="border-b border-black mb-1 w-full"></div>
