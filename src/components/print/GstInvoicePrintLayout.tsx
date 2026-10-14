@@ -1,6 +1,6 @@
 import React from 'react';
 import type { DocumentRecord, SupplierSettings } from '../../types/billing';
-import { calculateTotals, formatCurrency, formatDateDisplay, safeNormalizeItems } from '../../utils/formatters';
+import { calculateTotals, formatCurrency, formatDateDisplay, safeNormalizeItems, toProperCase } from '../../utils/formatters';
 import { numberToWordsPakistani } from '../../utils/numberToWords';
 
 interface Props {
@@ -8,6 +8,20 @@ interface Props {
   settings: SupplierSettings;
   printOnLetterhead: boolean;
   showDateOnBill?: boolean;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+interface InvoiceRow {
+  desc: string;
+  qty: number;
+  unit: string;
+  unitRate: number;
+  amount: number;
+  rate: number;
+  gstAmt: number;
+  inc: number;
+  slots: number;
 }
 
 export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, showDateOnBill = true }) => {
@@ -47,205 +61,326 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
   const firmGST = firmObj?.gst || settings.supplierGST;
   const firmVendor = firmObj?.vendorNo || settings.vendorNo;
 
-  // 4 empty rows for authentic Pakistani government sales tax format
-  const emptyRows = [1, 2, 3, 4];
+  /* Itemised goods rows (Kashif, 2026-10-14): a sales tax invoice must be
+     able to carry the item names/details itself, not only an aggregate
+     "AS PER BILL NO." line. Every goods item prints with its own quantity,
+     description, rate, exclusive value, its own GST rate and GST amount;
+     a rounding adjustment on the last row makes the GST column foot
+     exactly to the document's GST total. Services (PST) never appear on a
+     GST invoice. */
+  const itemRateOf = (it: any): number =>
+    (it.taxRate !== undefined && it.taxRate !== null && !isNaN(Number(it.taxRate)) && Number(it.taxRate) >= 0)
+      ? Number(it.taxRate)
+      : gstRate;
+
+  const goodsItems = items.filter((i: any) => (i.tax ?? i.Tax) === 'GST');
+  const rows: InvoiceRow[] = goodsItems.map((it: any) => {
+    const amount = round2(
+      (it.amount !== undefined && it.amount !== null && isFinite(Number(it.amount)))
+        ? Number(it.amount)
+        : (Number(it.qty) || 0) * (Number(it.rate) || 0)
+    );
+    const rate = itemRateOf(it);
+    const desc = toProperCase(it.description || it.Description || '');
+    const extraLines = Math.max(0, Math.ceil(desc.length / 52) - 1);
+    return {
+      desc,
+      qty: Number(it.qty) || 0,
+      unit: it.unit || it.Unit || 'Nos',
+      unitRate: Number(it.rate) || 0,
+      amount,
+      rate,
+      gstAmt: round2(amount * rate),
+      inc: 0,
+      slots: 1 + extraLines,
+    };
+  });
+  if (rows.length > 0) {
+    const diff = round2(gst - rows.reduce((s, r) => s + r.gstAmt, 0));
+    if (diff !== 0) rows[rows.length - 1].gstAmt = round2(rows[rows.length - 1].gstAmt + diff);
+    rows.forEach((r) => { r.inc = round2(r.amount + r.gstAmt); });
+  }
+  const hasItemRows = rows.length > 0;
+
+  /* Pagination, same sheet discipline as the Bill: page capacities in row
+     slots, the last sheet reserving room for the TOTAL row, the tax
+     summary block and the signatures. Provisional caps are verified
+     against the physical page in the print harness. */
+  const FIRST_MAX = printOnLetterhead ? 14 : 20;
+  const LATER_MAX = printOnLetterhead ? 20 : 27;
+  const LAST_MAX = LATER_MAX - 7;
+  const slotsOf = (chunk: InvoiceRow[]) => chunk.reduce((s, r) => s + r.slots, 0);
+  const takeFit = (from: InvoiceRow[], cap: number): InvoiceRow[] => {
+    const out: InvoiceRow[] = [];
+    let used = 0;
+    while (from.length > 0 && used + from[0].slots <= cap) {
+      const nxt = from.shift()!;
+      out.push(nxt);
+      used += nxt.slots;
+    }
+    if (out.length === 0 && from.length > 0) out.push(from.shift()!);
+    return out;
+  };
+  const chunks: InvoiceRow[][] = [];
+  if (hasItemRows) {
+    const rest = [...rows];
+    chunks.push(takeFit(rest, FIRST_MAX));
+    while (rest.length > 0) chunks.push(takeFit(rest, LATER_MAX));
+    while (chunks.length > 1 && slotsOf(chunks[chunks.length - 1]) > LAST_MAX) {
+      const last = chunks[chunks.length - 1];
+      const moved: InvoiceRow[] = [];
+      while (slotsOf(last) > LAST_MAX && last.length > 1) moved.unshift(last.shift()!);
+      chunks.splice(chunks.length - 1, 0, moved);
+    }
+    if (chunks.length === 1 && slotsOf(chunks[0]) > LAST_MAX) {
+      const second: InvoiceRow[] = [];
+      while (slotsOf(chunks[0]) > LAST_MAX && chunks[0].length > 1) second.unshift(chunks[0].pop()!);
+      chunks.push(second);
+    }
+  }
+  const totalSheets = hasItemRows ? chunks.length : 1;
+
+  const pctLabel = (rate: number) => `${Math.round(rate * 10000) / 100}%`;
+
+  const tableHead = (
+    <thead>
+      <tr className="bg-white border-b-2 border-black text-center font-bold">
+        <th className="border-r border-black py-1.5 px-1 w-16">Quantity</th>
+        <th className="border-r border-black py-1.5 px-2 text-left">Description Of Goods</th>
+        <th className="border-r border-black py-1.5 px-1.5 w-20 text-right">Rate</th>
+        <th className="border-r border-black py-1.5 px-1.5 w-24 text-right">Value Exclusive Sales Tax</th>
+        <th className="border-r border-black py-1.5 px-1 w-16">Rate of S.T</th>
+        <th className="border-r border-black py-1.5 px-1.5 w-24 text-right">Total Sales Tax Payable</th>
+        <th className="py-1.5 px-1.5 w-24 text-right">Value Including Sales Tax</th>
+      </tr>
+    </thead>
+  );
+
+  const totalRow = (
+    <tr className="bg-gray-200 print:bg-gray-200 border-t-2 border-b-[3px] border-black text-[11pt] font-black">
+      <td colSpan={3} className="border-r border-black py-2 px-2 text-right uppercase tracking-wider text-black">
+        TOTAL:
+      </td>
+      <td className="border-r border-black py-2 px-1.5 text-right font-mono font-bold text-black">
+        {formatCurrency(goodsSub)}
+      </td>
+      <td className="border-r border-black py-2 px-1 text-center"></td>
+      <td className="border-r border-black py-2 px-1.5 text-right font-mono font-bold text-black">
+        {formatCurrency(gst)}
+      </td>
+      <td className="py-2 px-1.5 text-right font-black font-mono text-[11.5pt] text-black underline decoration-double">
+        {formatCurrency(valueIncTax)}
+      </td>
+    </tr>
+  );
+
+  const sheetClass = (isLast: boolean) =>
+    `gst-invoice-sheet print-sheet text-black text-[10pt] leading-tight mx-auto bg-white w-full print:bg-white print:text-black mb-8 print:mb-0 ${
+      !isLast ? 'print:break-after-page print:page-break-after-always' : ''
+    } ${isHashirStyle ? 'font-sans' : 'font-serif firm-anwar-print'}`;
 
   return (
-    <div className={`gst-invoice-sheet text-black text-[10pt] leading-tight mx-auto bg-white w-full print:bg-white print:text-black ${
-      isHashirStyle ? 'font-sans' : 'font-serif firm-anwar-print'
-    }`}>
-      {/* If Letterhead OFF: Show Supplier Header */}
-      {!printOnLetterhead && (
-        <div className={`border-b-2 ${isHashirStyle ? 'border-slate-900 pb-3 mb-3' : 'border-black pb-2 mb-2.5'} text-center`}>
-          <h1 className="text-2xl font-black uppercase tracking-wide text-black">{firmName}</h1>
-          <p className="text-xs font-semibold text-gray-700 tracking-wider uppercase">{firmTagline}</p>
-          <p className="text-xs text-gray-800 mt-0.5">{firmAddress}</p>
-          <div className="flex flex-wrap justify-center gap-x-4 text-xs font-semibold text-gray-900 mt-1">
-            <span>Ph: {firmPhone}</span>
-            <span>NTN: {firmNTN}</span>
-            <span>GST No: {firmGST}</span>
-            {firmVendor && <span>Vendor No: {firmVendor}</span>}
-          </div>
-        </div>
-      )}
+    <>
+      {(hasItemRows ? chunks : [[] as InvoiceRow[]]).map((chunk, sheetIdx) => {
+        const isFirst = sheetIdx === 0;
+        const isLastSheet = sheetIdx === totalSheets - 1;
+        return (
+          <div key={sheetIdx} className={sheetClass(isLastSheet)}>
+            {isFirst ? (
+              <>
+                {/* If Letterhead OFF: Show Supplier Header */}
+                {!printOnLetterhead && (
+                  <div className={`border-b-2 ${isHashirStyle ? 'border-slate-900 pb-3 mb-3' : 'border-black pb-2 mb-2.5'} text-center`}>
+                    <h1 className="text-2xl font-black uppercase tracking-wide text-black">{firmName}</h1>
+                    <p className="text-xs font-semibold text-gray-700 tracking-wider uppercase">{firmTagline}</p>
+                    <p className="text-xs text-gray-800 mt-0.5">{firmAddress}</p>
+                    <div className="flex flex-wrap justify-center gap-x-4 text-xs font-semibold text-gray-900 mt-1">
+                      <span>Ph: {firmPhone}</span>
+                      <span>NTN: {firmNTN}</span>
+                      <span>GST No: {firmGST}</span>
+                      {firmVendor && <span>Vendor No: {firmVendor}</span>}
+                    </div>
+                  </div>
+                )}
 
-      {/* Main Title & Invoice Number */}
-      {isHashirStyle ? (
-        <div className="flex justify-between items-stretch border-slate-800 border-2 mb-3">
-          <div className="flex items-center px-3 py-2 text-[1.65rem] leading-none text-slate-900 font-black uppercase tracking-wider">
-            SALES TAX INVOICE
-          </div>
-          <div className="flex flex-col justify-end text-right px-3 py-2 border-l-2 border-slate-800">
-            <div className="text-sm mb-3 text-slate-900">
-              <span className="font-semibold">Invoice No. </span>
-              <span className="font-mono font-bold">{docNo}</span>
+                {/* Main Title & Invoice Number */}
+                {isHashirStyle ? (
+                  <div className="flex justify-between items-stretch border-slate-800 border-2 mb-3">
+                    <div className="flex items-center px-3 py-2 text-[1.65rem] leading-none text-slate-900 font-black uppercase tracking-wider">
+                      SALES TAX INVOICE
+                    </div>
+                    <div className="flex flex-col justify-end text-right px-3 py-2 border-l-2 border-slate-800">
+                      <div className="text-sm mb-3 text-slate-900">
+                        <span className="font-semibold">Invoice No. </span>
+                        <span className="font-mono font-bold">{docNo}</span>
+                      </div>
+                      <div className="text-xs font-semibold text-slate-500">
+                        {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center border-b-2 border-black pb-2 mb-3">
+                    <div className="text-xl font-black uppercase tracking-wider text-black font-serif">
+                      SALES TAX INVOICE
+                    </div>
+                    <div className="flex justify-center gap-6 mt-1 text-sm text-black font-serif">
+                      <span><span className="font-semibold">Invoice No.: </span><span className="font-mono font-bold">{docNo}</span></span>
+                      <span className="font-semibold">
+                        {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Supplier & Buyer Two-Column Detail Box (Pure white, crisp black borders) */}
+                <div className="border border-black rounded p-2 mb-2.5 text-[9.5pt] grid grid-cols-2 gap-3 bg-white">
+                  {/* Supplier details */}
+                  <div className="border-r border-gray-400 pr-2 space-y-0.5">
+                    <div className="font-bold text-xs uppercase text-gray-800 tracking-wider border-b border-gray-300 pb-0.5 mb-1">
+                      Supplier&apos;s Particulars
+                    </div>
+                    <div><span className="font-bold">M/s: </span><strong className="font-black text-black uppercase tracking-wide">{firmName}</strong></div>
+                    <div className="text-xs text-gray-800 truncate"><span className="font-bold">Address: </span>{settings.supplierAddress}</div>
+                    <div className="text-xs grid grid-cols-2 gap-1 pt-0.5">
+                      <div><span className="font-bold">NTN: </span>{settings.supplierNTN}</div>
+                      <div><span className="font-bold">GST Reg: </span>{settings.supplierGST}</div>
+                    </div>
+                    {settings.vendorNo && (
+                      <div className="text-xs"><span className="font-bold">Vendor #: </span>{settings.vendorNo}</div>
+                    )}
+                  </div>
+
+                  {/* Buyer details */}
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-xs uppercase text-gray-800 tracking-wider border-b border-gray-300 pb-0.5 mb-1">
+                      Buyer&apos;s Particulars
+                    </div>
+                    <div><span className="font-bold">M/s: </span>{clientName}</div>
+                    <div className="text-xs text-gray-800 truncate"><span className="font-bold">Address: </span>{clientAddress || '—'}</div>
+                    <div className="text-xs"><span className="font-bold">NTN #: </span>{clientNTN || '................................'}</div>
+                    <div className="text-xs"><span className="font-bold">ST Reg #: </span>................................</div>
+                    <div className="text-xs pt-0.5 truncate"><span className="font-bold">Terms: </span>{refText || 'As per Purchase Order'}</div>
+                  </div>
+                </div>
+
+                {hasItemRows && (
+                  <div className="text-[9.5pt] font-bold text-black mb-1.5">
+                    Items as per Bill No. {docNo}
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Continuation sheet header */
+              <div className={`flex justify-between items-baseline border-b-2 ${isHashirStyle ? 'border-slate-800' : 'border-black'} pb-1 mb-2`}>
+                <p className="font-black uppercase tracking-wide text-[11pt]">Sales Tax Invoice #{docNo} · {firmName}</p>
+                <p className="text-[9pt] font-semibold">{clientName} (Continued)</p>
+              </div>
+            )}
+
+            {/* Main GST Table (Pure white, zero grey highlights) */}
+            <table className="w-full border-collapse border border-black text-[9.5pt] mb-2.5 bg-white">
+              {tableHead}
+              <tbody>
+                {hasItemRows ? (
+                  <>
+                    {chunk.map((r, ri) => (
+                      <tr key={ri} className="border-b border-black font-medium bg-white">
+                        <td className="border-r border-black py-1.5 px-1 text-center font-bold whitespace-nowrap">{r.qty} {r.unit}</td>
+                        <td className="border-r border-black py-1.5 px-2">{r.desc}</td>
+                        <td className="border-r border-black py-1.5 px-1.5 text-right font-mono">{formatCurrency(r.unitRate)}</td>
+                        <td className="border-r border-black py-1.5 px-1.5 text-right font-bold font-mono">{formatCurrency(r.amount)}</td>
+                        <td className="border-r border-black py-1.5 px-1 text-center font-bold">{pctLabel(r.rate)}</td>
+                        <td className="border-r border-black py-1.5 px-1.5 text-right font-bold font-mono">{formatCurrency(r.gstAmt)}</td>
+                        <td className="py-1.5 px-1.5 text-right font-black font-mono">{formatCurrency(r.inc)}</td>
+                      </tr>
+                    ))}
+                    {isLastSheet && totalRow}
+                  </>
+                ) : computed.gstBreakdown && computed.gstBreakdown.length > 1 ? (
+                  <>
+                    {computed.gstBreakdown.map((b) => (
+                      <tr key={b.ratePercent} className="border-b border-black font-medium bg-white text-[9.5pt]">
+                        <td className="border-r border-black py-2 px-1 text-center font-bold">1 Job</td>
+                        <td className="border-r border-black py-2 px-2">
+                          <span className="font-bold">AS PER BILL NO. {docNo}</span>
+                          <span className="text-[8.5pt] text-gray-700 block">Goods subject to {b.ratePercent}% Sales Tax</span>
+                        </td>
+                        <td className="border-r border-black py-2 px-1.5 text-right font-mono">{formatCurrency(b.taxableAmount)}</td>
+                        <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(b.taxableAmount)}</td>
+                        <td className="border-r border-black py-2 px-1 text-center font-bold">{b.ratePercent}%</td>
+                        <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(b.taxAmount)}</td>
+                        <td className="py-2 px-1.5 text-right font-black font-mono">{formatCurrency(b.taxableAmount + b.taxAmount)}</td>
+                      </tr>
+                    ))}
+                    {totalRow}
+                  </>
+                ) : (
+                  <>
+                    <tr className="border-b border-black font-medium bg-white">
+                      <td className="border-r border-black py-2 px-1 text-center font-bold">1 Job</td>
+                      <td className="border-r border-black py-2 px-2">
+                        <span className="font-bold">AS PER BILL NO. {docNo}</span>
+                      </td>
+                      <td className="border-r border-black py-2 px-1.5 text-right font-mono">{formatCurrency(goodsSub)}</td>
+                      <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(goodsSub)}</td>
+                      <td className="border-r border-black py-2 px-1 text-center font-bold">
+                        {computed.gstBreakdown?.[0]?.ratePercent ?? gstPercent}%
+                      </td>
+                      <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(gst)}</td>
+                      <td className="py-2 px-1.5 text-right font-black font-mono">{formatCurrency(valueIncTax)}</td>
+                    </tr>
+                    {totalRow}
+                  </>
+                )}
+              </tbody>
+            </table>
+
+            {isLastSheet && (
+              <>
+                {/* Tax Summary Block (Pure white, no grey highlight) */}
+                <div className="flex justify-between items-start mb-2.5 border border-black p-2 rounded bg-white">
+                  <div className="space-y-0.5 text-[9.5pt] w-full">
+                    <div>
+                      <span className="font-bold">Sale Tax Rs: </span>
+                      <span className="font-bold font-mono underline decoration-dotted">{formatCurrency(gst)}</span>
+                    </div>
+                    <div>
+                      <span className="font-bold">Sale Tax Inclusive Value Rs: </span>
+                      <span className="font-black font-mono underline decoration-double">{formatCurrency(valueIncTax)}</span>
+                    </div>
+                    <div className="pt-0.5 text-[9pt] italic text-gray-800">
+                      <span className="font-bold not-italic">In Words: </span>
+                      {numberToWordsPakistani(valueIncTax)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Signatures */}
+                <div className="flex justify-between items-end pt-6 mt-4">
+                  <div className="text-center w-52">
+                    <div className="border-b border-black mb-1 w-full"></div>
+                    <p className="text-xs text-gray-700">Buyer&apos;s Signature / Stamp</p>
+                  </div>
+                  <div className="text-center w-56">
+                    <div className="border-b border-black mb-1 w-full"></div>
+                    <p className="text-xs font-black uppercase tracking-wider text-black">For {firmName}</p>
+                    <p className="text-xs text-gray-700">Authorised Signatory & Stamp</p>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Bottom Page Footer on EVERY sheet */}
+            <div className="flex justify-between items-center border-t border-gray-300 pt-1.5 mt-3 text-[8.5pt] text-gray-600">
+              <span>Sales Tax Invoice #{docNo} · {clientName}</span>
+              <span className="font-bold text-gray-800">
+                Page {sheetIdx + 1} of {totalSheets}
+              </span>
             </div>
-            <div className="text-xs font-semibold text-slate-500">
-              {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
-            </div>
           </div>
-        </div>
-      ) : (
-        <div className="text-center border-b-2 border-black pb-2 mb-3">
-          <div className="text-xl font-black uppercase tracking-wider text-black font-serif">
-            SALES TAX INVOICE
-          </div>
-          <div className="flex justify-center gap-6 mt-1 text-sm text-black font-serif">
-            <span><span className="font-semibold">Invoice No.: </span><span className="font-mono font-bold">{docNo}</span></span>
-            <span className="font-semibold">
-              {showDateOnBill ? `Date: ${docDate}` : 'Date: ........................'}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Supplier & Buyer Two-Column Detail Box (Pure white, crisp black borders) */}
-      <div className="border border-black rounded p-2 mb-2.5 text-[9.5pt] grid grid-cols-2 gap-3 bg-white">
-        {/* Supplier details */}
-        <div className="border-r border-gray-400 pr-2 space-y-0.5">
-          <div className="font-bold text-xs uppercase text-gray-800 tracking-wider border-b border-gray-300 pb-0.5 mb-1">
-            Supplier&apos;s Particulars
-          </div>
-          <div><span className="font-bold">M/s: </span><strong className="font-black text-black uppercase tracking-wide">{firmName}</strong></div>
-          <div className="text-xs text-gray-800 truncate"><span className="font-bold">Address: </span>{settings.supplierAddress}</div>
-          <div className="text-xs grid grid-cols-2 gap-1 pt-0.5">
-            <div><span className="font-bold">NTN: </span>{settings.supplierNTN}</div>
-            <div><span className="font-bold">GST Reg: </span>{settings.supplierGST}</div>
-          </div>
-          {settings.vendorNo && (
-            <div className="text-xs"><span className="font-bold">Vendor #: </span>{settings.vendorNo}</div>
-          )}
-        </div>
-
-        {/* Buyer details */}
-        <div className="space-y-0.5">
-          <div className="font-bold text-xs uppercase text-gray-800 tracking-wider border-b border-gray-300 pb-0.5 mb-1">
-            Buyer&apos;s Particulars
-          </div>
-          <div><span className="font-bold">M/s: </span>{clientName}</div>
-          <div className="text-xs text-gray-800 truncate"><span className="font-bold">Address: </span>{clientAddress || '—'}</div>
-          <div className="text-xs"><span className="font-bold">NTN #: </span>{clientNTN || '................................'}</div>
-          <div className="text-xs"><span className="font-bold">ST Reg #: </span>................................</div>
-          <div className="text-xs pt-0.5 truncate"><span className="font-bold">Terms: </span>{refText || 'As per Purchase Order'}</div>
-        </div>
-      </div>
-
-      {/* Main GST Table (Pure white, zero grey highlights) */}
-      <table className="w-full border-collapse border border-black text-[9.5pt] mb-2.5 bg-white">
-        <thead>
-          <tr className="bg-white border-b-2 border-black text-center font-bold">
-            <th className="border-r border-black py-1.5 px-1 w-16">Quantity</th>
-            <th className="border-r border-black py-1.5 px-2 text-left">Description Of Goods</th>
-            <th className="border-r border-black py-1.5 px-1.5 w-20 text-right">Rate</th>
-            <th className="border-r border-black py-1.5 px-1.5 w-24 text-right">Value Exclusive Sales Tax</th>
-            <th className="border-r border-black py-1.5 px-1 w-16">Rate of S.T</th>
-            <th className="border-r border-black py-1.5 px-1.5 w-24 text-right">Total Sales Tax Payable</th>
-            <th className="py-1.5 px-1.5 w-24 text-right">Value Including Sales Tax</th>
-          </tr>
-        </thead>
-        <tbody>
-          {/* GST Item Rows: Displays breakdown for multiple rates or standard row for uniform rate */}
-          {computed.gstBreakdown && computed.gstBreakdown.length > 1 ? (
-            computed.gstBreakdown.map((b) => (
-              <tr key={b.ratePercent} className="border-b border-black font-medium bg-white text-[9.5pt]">
-                <td className="border-r border-black py-2 px-1 text-center font-bold">1 Job</td>
-                <td className="border-r border-black py-2 px-2">
-                  <span className="font-bold">AS PER BILL NO. {docNo}</span>
-                  <span className="text-[8.5pt] text-gray-700 block">Goods subject to {b.ratePercent}% Sales Tax</span>
-                </td>
-                <td className="border-r border-black py-2 px-1.5 text-right font-mono">{formatCurrency(b.taxableAmount)}</td>
-                <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(b.taxableAmount)}</td>
-                <td className="border-r border-black py-2 px-1 text-center font-bold">{b.ratePercent}%</td>
-                <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(b.taxAmount)}</td>
-                <td className="py-2 px-1.5 text-right font-black font-mono">{formatCurrency(b.taxableAmount + b.taxAmount)}</td>
-              </tr>
-            ))
-          ) : (
-            <tr className="border-b border-black font-medium bg-white">
-              <td className="border-r border-black py-2 px-1 text-center font-bold">1 Job</td>
-              <td className="border-r border-black py-2 px-2">
-                <span className="font-bold">AS PER BILL NO. {docNo}</span>
-              </td>
-              <td className="border-r border-black py-2 px-1.5 text-right font-mono">{formatCurrency(goodsSub)}</td>
-              <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(goodsSub)}</td>
-              <td className="border-r border-black py-2 px-1 text-center font-bold">
-                {computed.gstBreakdown?.[0]?.ratePercent ?? gstPercent}%
-              </td>
-              <td className="border-r border-black py-2 px-1.5 text-right font-bold font-mono">{formatCurrency(gst)}</td>
-              <td className="py-2 px-1.5 text-right font-black font-mono">{formatCurrency(valueIncTax)}</td>
-            </tr>
-          )}
-
-          {/* 4 Empty Form Rows for standard paper format */}
-          {emptyRows.map((n) => (
-            <tr key={n} className="border-b-2 border-gray-500 h-5 bg-white">
-              <td className="border-r border-black"></td>
-              <td className="border-r border-black"></td>
-              <td className="border-r border-black"></td>
-              <td className="border-r border-black"></td>
-              <td className="border-r border-black"></td>
-              <td className="border-r border-black"></td>
-              <td></td>
-            </tr>
-          ))}
-
-          {/* TOTAL ROW - Prominent with Grey Highlight and Distinct Bold Font */}
-          <tr className="bg-gray-200 print:bg-gray-200 border-t-2 border-b-[3px] border-black text-[11pt] font-black">
-            <td colSpan={3} className="border-r border-black py-2 px-2 text-right uppercase tracking-wider text-black">
-              TOTAL:
-            </td>
-            <td className="border-r border-black py-2 px-1.5 text-right font-mono font-bold text-black">
-              {formatCurrency(goodsSub)}
-            </td>
-            <td className="border-r border-black py-2 px-1 text-center"></td>
-            <td className="border-r border-black py-2 px-1.5 text-right font-mono font-bold text-black">
-              {formatCurrency(gst)}
-            </td>
-            <td className="py-2 px-1.5 text-right font-black font-mono text-[11.5pt] text-black underline decoration-double">
-              {formatCurrency(valueIncTax)}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      {/* Tax Summary Block (Pure white, no grey highlight) */}
-      <div className="flex justify-between items-start mb-2.5 border border-black p-2 rounded bg-white">
-        <div className="space-y-0.5 text-[9.5pt] w-full">
-          <div>
-            <span className="font-bold">Sale Tax Rs: </span>
-            <span className="font-bold font-mono underline decoration-dotted">{formatCurrency(gst)}</span>
-          </div>
-          <div>
-            <span className="font-bold">Sale Tax Inclusive Value Rs: </span>
-            <span className="font-black font-mono underline decoration-double">{formatCurrency(valueIncTax)}</span>
-          </div>
-          <div className="pt-0.5 text-[9pt] italic text-gray-800">
-            <span className="font-bold not-italic">In Words: </span>
-            {numberToWordsPakistani(valueIncTax)}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Signatures */}
-      <div className="flex justify-between items-end pt-6 mt-4">
-        <div className="text-center w-52">
-          <div className="border-b border-black mb-1 w-full"></div>
-          <p className="text-xs text-gray-700">Buyer&apos;s Signature / Stamp</p>
-        </div>
-        <div className="text-center w-56">
-          <div className="border-b border-black mb-1 w-full"></div>
-          <p className="text-xs font-black uppercase tracking-wider text-black">For {firmName}</p>
-          <p className="text-xs text-gray-700">Authorised Signatory & Stamp</p>
-        </div>
-      </div>
-
-      {/* Bottom Page Footer */}
-      <div className="flex justify-between items-center border-t border-gray-300 pt-1.5 mt-3 text-[8.5pt] text-gray-600">
-        <span>Sales Tax Invoice #{docNo} · {clientName}</span>
-        <span className="font-bold text-gray-800">
-          Page 1 of 1
-        </span>
-      </div>
-    </div>
+        );
+      })}
+    </>
   );
 };
