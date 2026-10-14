@@ -248,21 +248,25 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     // is the totals-spill page sitting just before the last page), then from
     // the previous page. Slot caps are respected throughout (the last page
     // must also leave room for the totals block) and no donor drops below
-    // 5 items.
+    // 5 items. The LAST page is topped up to 3 items only, not 5: it also
+    // carries the full totals block (~7 rows), so 3 items fill it properly —
+    // topping it to 5 would gut the previous page for nothing (real case:
+    // Bill #227 printed 6+5 instead of 8+3, 2026-10-14).
     for (let i = pageChunks.length - 1; i >= 1; i--) {
       const target = pageChunks[i];
       if (target.length > 3) continue;
+      const want = i === pageChunks.length - 1 ? 3 : 5;
       const cap = i === pageChunks.length - 1 ? LATER_MAX - 7 : LATER_MAX;
       const next = pageChunks[i + 1];
       if (next) {
-        while (target.length < 5 && next.length > 5) {
+        while (target.length < want && next.length > 5) {
           const candidate = next[0];
           if (slotsOf(target) + slotCost(candidate) > cap) break;
           target.push(next.shift()!);
         }
       }
       const source = pageChunks[i - 1];
-      while (target.length < 5 && source.length > 5) {
+      while (target.length < want && source.length > 5) {
         const candidate = source[source.length - 1];
         if (slotsOf(target) + slotCost(candidate) > cap) break;
         target.unshift(source.pop()!);
@@ -709,6 +713,11 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               </div>
             )}
 
+            {/* Amount in words, signatures and the page footer strip form
+                ONE unbreakable block on the last page: the strip must never
+                strand alone on an extra page (seen on Bill #71 when the
+                phone's print dialog defaulted to Letter paper, 2026-10-14). */}
+            <div className={isLastPage ? 'break-inside-avoid' : ''} style={isLastPage ? { pageBreakInside: 'avoid' } : undefined}>
             {/* Amount in words & Signatures on Final Page */}
             {isLastPage && (
               <>
@@ -765,6 +774,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               <span className="font-bold text-black">
                 Page {currentPageNum} of {totalPages}
               </span>
+            </div>
             </div>
           </div>
         );
