@@ -229,6 +229,32 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
       pageChunks.splice(pageChunks.length - 1, 0, move);
     }
     if (pageChunks.length === 1) pageChunks.push([]); // totals-only last page
+    // Orphan control: no page may end up with only 1–3 items when a
+    // neighbouring page can spare some. Walk backwards; a short page first
+    // borrows from the NEXT page (keeps earlier pages full — the usual case
+    // is the totals-spill page sitting just before the last page), then from
+    // the previous page. Slot caps are respected throughout (the last page
+    // must also leave room for the totals block) and no donor drops below
+    // 5 items.
+    for (let i = pageChunks.length - 1; i >= 1; i--) {
+      const target = pageChunks[i];
+      if (target.length > 3) continue;
+      const cap = i === pageChunks.length - 1 ? LATER_MAX - 7 : LATER_MAX;
+      const next = pageChunks[i + 1];
+      if (next) {
+        while (target.length < 5 && next.length > 5) {
+          const candidate = next[0];
+          if (slotsOf(target) + slotCost(candidate) > cap) break;
+          target.push(next.shift()!);
+        }
+      }
+      const source = pageChunks[i - 1];
+      while (target.length < 5 && source.length > 5) {
+        const candidate = source[source.length - 1];
+        if (slotsOf(target) + slotCost(candidate) > cap) break;
+        target.unshift(source.pop()!);
+      }
+    }
   }
 
   const totalPages = pageChunks.length;

@@ -186,6 +186,16 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
     }
   }
 
+  // Orphan control: never leave the last page with only 1–3 items when the
+  // previous page can spare some — pull items forward until it carries 5.
+  if (pageChunks.length >= 2) {
+    const last = pageChunks[pageChunks.length - 1];
+    if (last.length <= 3) {
+      const prev = pageChunks[pageChunks.length - 2];
+      while (last.length < 5 && prev.length > 5) last.unshift(prev.pop()!);
+    }
+  }
+
   const totalPages = pageChunks.length;
 
   return (
