@@ -181,9 +181,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   // Letterhead mode leaves less room -> slightly lower caps.
   // Long descriptions (>60 chars, wraps to 2 lines) count as 2 slots.
   // Reader ease is protected: text size and padding never shrink.
-  // Fit-to-page: allow 2 extra items on a single page with compact spacing.
-  // Only meaningful when the bill would otherwise be 2 pages; font stays >= 9.5pt.
-  const SINGLE_MAX = (printOnLetterhead ? 13 : 15) + (fitToOnePage ? 2 : 0);
+  // Fit-to-page is the user's explicit choice: ALL items go on one page
+  // (compact spacing + reduced margins make it physically fit). No split.
+  const SINGLE_MAX = printOnLetterhead ? 13 : 15;
   const FIRST_MAX = printOnLetterhead ? 12 : 14;
   const LATER_MAX = printOnLetterhead ? 18 : 20;
 
@@ -210,10 +210,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     items.reduce((s, it) => s + slotCost(it), 0);
 
   const pageChunks: ItemRowWithSr[][] = [];
-  // Single page if the item COUNT fits the cap and the weighted slots aren't
-  // excessively over (long wrapping descriptions). This keeps the verified
-  // 13–15 item single-page behaviour for normal bills.
-  if (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) <= SINGLE_MAX + 3) {
+  // Single page if Fit-to-page is on, or the item COUNT fits the cap and the
+  // weighted slots aren't excessively over (long wrapping descriptions).
+  // This keeps the verified 13–15 item single-page behaviour for normal bills.
+  if (fitToOnePage || (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) <= SINGLE_MAX + 3)) {
     pageChunks.push(sequentialItems);
   } else {
     pageChunks.push(takeFit(FIRST_MAX));
