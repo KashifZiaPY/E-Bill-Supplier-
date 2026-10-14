@@ -85,9 +85,11 @@ export const PreviewScreen: React.FC<Props> = ({
     window.print();
   };
 
-  // Top and bottom margins (in inches). Fit-to-page uses tighter safe minimums.
-  const topMargin = fitToOnePage ? 1.5 : (printOnLetterhead ? (settings.letterheadTop || 2.0) : 0.4);
-  const bottomMargin = fitToOnePage ? 0.75 : (printOnLetterhead ? (settings.letterheadBottom || 1.0) : 0.4);
+  // Top and bottom margins (in inches). On pre-printed letterhead the
+  // letterhead margins ALWAYS win — Fit must never shrink them, or content
+  // prints over the letterhead's own text (real-print defect, 2026-10-14).
+  const topMargin = printOnLetterhead ? (settings.letterheadTop || 2.0) : (fitToOnePage ? 1.5 : 0.4);
+  const bottomMargin = printOnLetterhead ? (settings.letterheadBottom || 1.0) : (fitToOnePage ? 0.75 : 0.4);
 
   const currentFirmName = doc.firmName || settings.supplierName || 'Anwar Traders';
 

@@ -181,8 +181,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   // Letterhead mode leaves less room -> slightly lower caps.
   // Long descriptions (>60 chars, wraps to 2 lines) count as 2 slots.
   // Reader ease is protected: text size and padding never shrink.
-  // Fit-to-page is the user's explicit choice: ALL items go on one page
-  // (compact spacing + reduced margins make it physically fit). No split.
+  // Fit-to-page is the user's explicit choice: on plain paper ALL items go
+  // on one page (compact spacing). On letterhead, Fit keeps the letterhead
+  // margins and forces one page only within the verified limits below.
   const SINGLE_MAX = printOnLetterhead ? 13 : 15;
   const FIRST_MAX = printOnLetterhead ? 12 : 14;
   const LATER_MAX = printOnLetterhead ? 18 : 20;
@@ -213,7 +214,15 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   // Single page if Fit-to-page is on, or the item COUNT fits the cap and the
   // weighted slots aren't excessively over (long wrapping descriptions).
   // This keeps the verified 13–15 item single-page behaviour for normal bills.
-  if (fitToOnePage || (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) <= SINGLE_MAX + 3)) {
+  // Fit on letterhead (Kashif's real-print verdict, 2026-10-14): within the
+  // proper letterhead margins a single page holds 15 items goods-only, or
+  // 12 when services are included (the second totals block takes ~3 items'
+  // space). Beyond those limits Fit paginates instead of invading the
+  // letterhead's printed zones.
+  const FIT_LETTERHEAD_MAX = goodsItems.length > 0 && serviceItems.length > 0 ? 12 : 15;
+  const normalFits = sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) <= SINGLE_MAX + 3;
+  const fitFits = !printOnLetterhead || (sequentialItems.length <= FIT_LETTERHEAD_MAX && slotsOf(sequentialItems) <= FIT_LETTERHEAD_MAX + 3);
+  if ((fitToOnePage && fitFits) || normalFits) {
     pageChunks.push(sequentialItems);
   } else {
     pageChunks.push(takeFit(FIRST_MAX));
