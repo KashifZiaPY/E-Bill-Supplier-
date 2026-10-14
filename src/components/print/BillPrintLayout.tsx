@@ -175,14 +175,29 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   }
 
   // Intelligent Multi-Page Pagination.
-  // Verified count caps: 15 single / 14 first / 20 later (plain mode).
-  // Letterhead mode leaves less room -> slightly lower caps.
-  // Long descriptions (>60 chars, wraps to 2 lines) count as 2 slots.
+  // Single-page budgets MEASURED with Chrome's print engine (page-by-page
+  // PDF tests, 2026-10-14): a page fits a fixed number of row slots, counting
+  // item rows AND totals rows together. Item slots come from slotCost below
+  // (wrapped descriptions count extra); totals rows are: goods block 3,
+  // services block 3, exempt block 1, plus the final TOTAL PAYABLE row (1).
+  // That is why a mixed bill fits ~4 fewer items than a goods-only bill, and
+  // why Hashir (taller sheet) has lower budgets than Anwar.
+  // Resulting one-page maxima (goods only / mixed): plain 15/11 Anwar,
+  // 13/9 Hashir; letterhead 13/9 Anwar, 9/5 Hashir.
+  // Multi-page caps below count items only — those pages carry no totals.
   // Reader ease is protected: text size and padding never shrink.
   // (The old "Fit to 1 page" option was removed 2026-10-14 by Kashif's
   // decision: it invaded the letterhead's printed zones and caused repeated
   // defects. Pagination below is the single, settled behaviour.)
   const SINGLE_MAX = printOnLetterhead ? 13 : 15;
+  const SINGLE_BUDGET = isHashirStyle
+    ? (printOnLetterhead ? 14 : 18)
+    : (printOnLetterhead ? 18 : 20);
+  const totalsSlots =
+    ((goodsItems.length > 0 || fallbackAllGoods) ? 3 : 0) +
+    (serviceItems.length > 0 ? 3 : 0) +
+    (otherItems.length > 0 ? 1 : 0) +
+    1;
   const FIRST_MAX = printOnLetterhead ? 12 : 14;
   const LATER_MAX = printOnLetterhead ? 18 : 20;
 
@@ -209,10 +224,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     items.reduce((s, it) => s + slotCost(it), 0);
 
   const pageChunks: ItemRowWithSr[][] = [];
-  // Single page if the item COUNT fits the cap and the weighted slots
-  // aren't excessively over (long wrapping descriptions). This keeps the
-  // verified 13–15 item single-page behaviour for normal bills.
-  if (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) <= SINGLE_MAX + 3) {
+  // Single page if the item count fits the rail AND item slots + totals
+  // slots fit the measured budget for this firm and paper.
+  if (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) + totalsSlots <= SINGLE_BUDGET) {
     pageChunks.push(sequentialItems);
   } else {
     pageChunks.push(takeFit(FIRST_MAX));
