@@ -194,8 +194,20 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   const SINGLE_BUDGET = isHashirStyle
     ? (printOnLetterhead ? 14 : 18)
     : (printOnLetterhead ? 18 : 20);
-  const FIRST_MAX = printOnLetterhead ? 12 : 14;
-  const LATER_MAX = printOnLetterhead ? 18 : 20;
+  // Multi-page page capacities, MEASURED 2026-10-14 from filled pages
+  // (headroom to the physical page box, minus a 2-slot safety margin for
+  // phone-printer variance). The old caps (12–14 / 18–20) were never
+  // measured and starved page 1 — Bill #227 closed its first page at 8
+  // items with half the page blank.
+  const FIRST_MAX = isHashirStyle
+    ? (printOnLetterhead ? 16 : 20)
+    : (printOnLetterhead ? 19 : 23);
+  const LATER_MAX = isHashirStyle
+    ? (printOnLetterhead ? 20 : 26)
+    : (printOnLetterhead ? 21 : 28);
+  // The last page additionally carries the grand total row, the
+  // amount-in-words line and the signature block (~5 slots of room).
+  const LAST_MAX = LATER_MAX - 5;
 
   const CHARS_PER_LINE = isHashirStyle ? 48 : 55;
   // Totals follow their sections (Kashif's decision, 2026-10-14): each
@@ -240,33 +252,42 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   } else {
     pageChunks.push(takeFit(FIRST_MAX));
     while (remaining.length > 0) pageChunks.push(takeFit(LATER_MAX));
-    // The last page also carries the grand total row (1 slot; the section
-    // totals blocks already ride inside the items' slot costs) — shift
-    // items off if tight.
+    // The last page must also fit the grand total row, amount-in-words and
+    // the signature block (LAST_MAX; the section totals blocks already ride
+    // inside the items' slot costs) — shift items off if tight.
     while (pageChunks.length > 1) {
       const last = pageChunks[pageChunks.length - 1];
-      if (slotsOf(last) + 1 <= LATER_MAX) break;
+      if (slotsOf(last) <= LAST_MAX) break;
       const move: ItemRowWithSr[] = [];
-      while (last.length > 1 && slotsOf(last) + 1 > LATER_MAX) move.push(last.shift()!);
+      while (last.length > 1 && slotsOf(last) > LAST_MAX) move.push(last.shift()!);
       if (move.length === 0) break;
       pageChunks.splice(pageChunks.length - 1, 0, move);
     }
     if (pageChunks.length === 1) pageChunks.push([]); // totals-only last page
-    // Orphan control: no page may end up with only 1–3 items when a
-    // neighbouring page can spare some. Walk backwards; a short page first
-    // borrows from the NEXT page (keeps earlier pages full — the usual case
-    // is the totals-spill page sitting just before the last page), then from
-    // the previous page. Slot caps are respected throughout (the last page
-    // must also leave room for the totals block) and no donor drops below
-    // 5 items. The LAST page is topped up to 3 items only, not 5: it also
-    // carries the full totals block (~7 rows), so 3 items fill it properly —
-    // topping it to 5 would gut the previous page for nothing (real case:
-    // Bill #227 printed 6+5 instead of 8+3, 2026-10-14).
+    // Orphan control for ITEM-ONLY pages: no such page may end up with only
+    // 1–3 items when a neighbouring page can spare some. Walk backwards; a
+    // short page first borrows from the NEXT page (keeps earlier pages full
+    // — the usual case is the totals-spill page sitting just before the last
+    // page), then from the previous page. Slot caps are respected
+    // throughout and no donor drops below 5 items.
+    // The totals-carrying LAST page is never topped up: it already carries
+    // a section totals block, the grand total, amount-in-words and the
+    // signature, so it is complete even with a single item — topping it up
+    // only guts the previous page (Bill #227 printed 8+3 with a half-blank
+    // page 1, 2026-10-14). If the last page would carry totals ALONE, it
+    // takes exactly one item from the previous page.
     for (let i = pageChunks.length - 1; i >= 1; i--) {
       const target = pageChunks[i];
+      if (i === pageChunks.length - 1) {
+        if (target.length === 0) {
+          const source = pageChunks[i - 1];
+          if (source.length > 1) target.unshift(source.pop()!);
+        }
+        continue;
+      }
       if (target.length > 3) continue;
-      const want = i === pageChunks.length - 1 ? 3 : 5;
-      const cap = i === pageChunks.length - 1 ? LATER_MAX - 1 : LATER_MAX;
+      const want = 5;
+      const cap = LATER_MAX;
       const next = pageChunks[i + 1];
       if (next) {
         while (target.length < want && next.length > 5) {
@@ -286,7 +307,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
   const totalPages = pageChunks.length;
 
-  // Section subtotal row fragments — reused for interleaved (single-page) and grouped (multi-page) layouts.
+  // Section subtotal row fragments — each prints under its section's last item.
   const goodsSubtotalRows = goodsSub > 0 && (
     <>
       <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
