@@ -184,7 +184,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   // why Hashir (taller sheet) has lower budgets than Anwar.
   // Resulting one-page maxima (goods only / mixed): plain 15/11 Anwar,
   // 13/9 Hashir; letterhead 13/9 Anwar, 9/5 Hashir.
-  // Multi-page caps below count items only — those pages carry no totals.
+  // Multi-page pages reserve room for any section totals block ending on
+  // them (the block's cost rides inside slotCost, below).
   // Reader ease is protected: text size and padding never shrink.
   // (The old "Fit to 1 page" option was removed 2026-10-14 by Kashif's
   // decision: it invaded the letterhead's printed zones and caused repeated
@@ -193,19 +194,26 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   const SINGLE_BUDGET = isHashirStyle
     ? (printOnLetterhead ? 14 : 18)
     : (printOnLetterhead ? 18 : 20);
-  const totalsSlots =
-    ((goodsItems.length > 0 || fallbackAllGoods) ? 3 : 0) +
-    (serviceItems.length > 0 ? 3 : 0) +
-    (otherItems.length > 0 ? 1 : 0) +
-    1;
   const FIRST_MAX = printOnLetterhead ? 12 : 14;
   const LATER_MAX = printOnLetterhead ? 18 : 20;
 
   const CHARS_PER_LINE = isHashirStyle ? 48 : 55;
-  // Slot cost: 1 per item, +1 for each wrapped line beyond the first, +1 for a section header.
+  // Totals follow their sections (Kashif's decision, 2026-10-14): each
+  // section's totals block prints directly under its last item, on whichever
+  // page that item falls. That item therefore also carries the block's slot
+  // cost, so every page reserves room for any block landing on it. Only the
+  // grand total row (+1 slot) stays behind on the last page.
+  const sectionFinalSrs = new Set<number>();
+  sequentialItems.forEach((it, i) => {
+    if (i === sequentialItems.length - 1 || sequentialItems[i + 1].tax !== it.tax) sectionFinalSrs.add(it.sr);
+  });
+  const sectionBlockCost = (tax: 'GST' | 'PST' | 'None'): number =>
+    tax === 'GST' ? (isUniformGoodsRate ? 3 : distinctGoodsRates.length + 3) : tax === 'PST' ? 3 : 1;
+  // Slot cost: 1 per item, +1 for each wrapped line beyond the first, +1 for
+  // a section header, + the section's totals block on its last item.
   const slotCost = (it: ItemRowWithSr): number => {
     const lines = Math.max(1, Math.ceil((it.description || '').length / CHARS_PER_LINE));
-    return 1 + (lines - 1) + (it.sectionHeader ? 1 : 0);
+    return 1 + (lines - 1) + (it.sectionHeader ? 1 : 0) + (sectionFinalSrs.has(it.sr) ? sectionBlockCost(it.tax) : 0);
   };
 
   let remaining = [...sequentialItems];
@@ -224,20 +232,22 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     items.reduce((s, it) => s + slotCost(it), 0);
 
   const pageChunks: ItemRowWithSr[][] = [];
-  // Single page if the item count fits the rail AND item slots + totals
-  // slots fit the measured budget for this firm and paper.
-  if (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) + totalsSlots <= SINGLE_BUDGET) {
+  // Single page if the item count fits the rail AND item slots (now
+  // including every section's totals block) + the grand total row fit the
+  // measured budget for this firm and paper.
+  if (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) + 1 <= SINGLE_BUDGET) {
     pageChunks.push(sequentialItems);
   } else {
     pageChunks.push(takeFit(FIRST_MAX));
     while (remaining.length > 0) pageChunks.push(takeFit(LATER_MAX));
-    // The last page also carries the totals block (~7 slots with section totals);
-    // shift items off if tight.
+    // The last page also carries the grand total row (1 slot; the section
+    // totals blocks already ride inside the items' slot costs) — shift
+    // items off if tight.
     while (pageChunks.length > 1) {
       const last = pageChunks[pageChunks.length - 1];
-      if (slotsOf(last) + 7 <= LATER_MAX) break;
+      if (slotsOf(last) + 1 <= LATER_MAX) break;
       const move: ItemRowWithSr[] = [];
-      while (last.length > 1 && slotsOf(last) + 7 > LATER_MAX) move.push(last.shift()!);
+      while (last.length > 1 && slotsOf(last) + 1 > LATER_MAX) move.push(last.shift()!);
       if (move.length === 0) break;
       pageChunks.splice(pageChunks.length - 1, 0, move);
     }
@@ -256,7 +266,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
       const target = pageChunks[i];
       if (target.length > 3) continue;
       const want = i === pageChunks.length - 1 ? 3 : 5;
-      const cap = i === pageChunks.length - 1 ? LATER_MAX - 7 : LATER_MAX;
+      const cap = i === pageChunks.length - 1 ? LATER_MAX - 1 : LATER_MAX;
       const next = pageChunks[i + 1];
       if (next) {
         while (target.length < want && next.length > 5) {
@@ -275,7 +285,6 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   }
 
   const totalPages = pageChunks.length;
-  const isSinglePage = totalPages === 1;
 
   // Section subtotal row fragments — reused for interleaved (single-page) and grouped (multi-page) layouts.
   const goodsSubtotalRows = goodsSub > 0 && (
@@ -622,10 +631,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
               </thead>
               <tbody>
                 {chunk.map((it, idx) => {
-                  // For single-page bills: render each section's subtotal directly beneath
-                  // its last item, so the subtotal sits under the relevant tax slot.
-                  const nextIt = chunk[idx + 1];
-                  const isLastOfSection = isSinglePage && (!nextIt || nextIt.tax !== it.tax);
+                  // Each section's totals block prints directly beneath its
+                  // last item, on whichever page that item falls (totals
+                  // follow their sections — Kashif's decision, 2026-10-14).
+                  const isLastOfSection = sectionFinalSrs.has(it.sr);
                   return (
                     <React.Fragment key={it.sr}>
                       {it.sectionHeader && (
@@ -673,13 +682,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   );
                 })}
 
-                {/* Subtotals & Grand Totals only on the LAST page */}
+                {/* Grand Total on the LAST page (section subtotals are
+                    interleaved under their sections above) */}
                 {isLastPage && (
                   <>
-                    {/* Multi-page: group all subtotals here. Single-page: already interleaved above. */}
-                    {!isSinglePage && goodsSubtotalRows}
-                    {!isSinglePage && servicesSubtotalRows}
-                    {!isSinglePage && otherSubtotalRows}
                     {/* GRAND TOTAL ROW: Distinctive Firm Presentation */}
                     {isHashirStyle ? (
                       /* Hashir Modern Corporate Style Grand Total */
