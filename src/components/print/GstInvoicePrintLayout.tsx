@@ -28,7 +28,8 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
 
   const docNo = doc.docNo || doc.DocNo || '—';
   const docDate = formatDateDisplay(doc.date || doc.Date);
-  const clientName = doc.clientName || doc.ClientName || '';
+  // Client name always prints in CAPS, however it was typed/stored (Kashif, 2026-10-14).
+  const clientName = (doc.clientName || doc.ClientName || '').toUpperCase();
   const clientAddress = doc.clientAddress || doc.ClientAddress || '';
   const clientNTN = doc.clientNTN || doc.ClientNTN || '';
   const refText = doc.refText || doc.RefText || '';

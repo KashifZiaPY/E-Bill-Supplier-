@@ -58,7 +58,8 @@ export const QuotationPrintLayout: React.FC<Props> = ({ doc, settings, printOnLe
   const docNo = doc.docNo || doc.DocNo || '—';
   const docDate = formatDateDisplay(doc.date || doc.Date);
   const validUntil = doc.validUntil || doc.ValidUntil ? formatDateDisplay(doc.validUntil || doc.ValidUntil) : '';
-  const clientName = doc.clientName || doc.ClientName || 'Client';
+  // Client name always prints in CAPS, however it was typed/stored (Kashif, 2026-10-14).
+  const clientName = (doc.clientName || doc.ClientName || 'Client').toUpperCase();
   const clientAddress = doc.clientAddress || doc.ClientAddress || '';
   const clientNTN = doc.clientNTN || doc.ClientNTN || '';
   const refText = doc.refText || doc.RefText || '';

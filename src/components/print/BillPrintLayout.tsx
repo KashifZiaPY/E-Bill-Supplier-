@@ -63,7 +63,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
   const docNo = doc.docNo || doc.DocNo || '—';
   const docDate = formatDateDisplay(doc.date || doc.Date);
-  const clientName = doc.clientName || doc.ClientName || 'Client';
+  // Client name always prints in CAPS, however it was typed/stored (Kashif, 2026-10-14).
+  const clientName = (doc.clientName || doc.ClientName || 'Client').toUpperCase();
   const clientAddress = doc.clientAddress || doc.ClientAddress || '';
   const clientNTN = doc.clientNTN || doc.ClientNTN || '';
   const refText = doc.refText || doc.RefText || '';
@@ -514,7 +515,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div className="sm:col-span-2">
                           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">
-                            BILLED TO (CLIENT PARTICULARS)
+                            BILLED TO
                           </span>
                           <div className="font-black text-slate-950 text-[11pt]">
                             M/s {clientName}
