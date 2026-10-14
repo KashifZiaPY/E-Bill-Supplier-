@@ -10,8 +10,6 @@ interface Props {
   /** Letterhead top/bottom padding in inches (from PreviewScreen). Used to adapt page capacity. */
   topPadIn?: number;
   bottomPadIn?: number;
-  /** When true, use compact spacing to try fitting a 2-page bill onto one page. Font stays >= 9.5pt. */
-  fitToOnePage?: boolean;
   /** When false, the bill date prints blank (for handwriting); the stored date is kept for records. */
   showDateOnBill?: boolean;
 }
@@ -27,7 +25,7 @@ interface ItemRowWithSr {
   sectionHeader?: string;
 }
 
-export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, topPadIn, bottomPadIn, fitToOnePage = false, showDateOnBill = true }) => {
+export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, topPadIn, bottomPadIn, showDateOnBill = true }) => {
   const rawItems = safeNormalizeItems(doc.items || doc.Items);
   const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
     ? Number(doc.gstRate)
@@ -181,9 +179,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   // Letterhead mode leaves less room -> slightly lower caps.
   // Long descriptions (>60 chars, wraps to 2 lines) count as 2 slots.
   // Reader ease is protected: text size and padding never shrink.
-  // Fit-to-page is the user's explicit choice: on plain paper ALL items go
-  // on one page (compact spacing). On letterhead, Fit keeps the letterhead
-  // margins and forces one page only within the verified limits below.
+  // (The old "Fit to 1 page" option was removed 2026-10-14 by Kashif's
+  // decision: it invaded the letterhead's printed zones and caused repeated
+  // defects. Pagination below is the single, settled behaviour.)
   const SINGLE_MAX = printOnLetterhead ? 13 : 15;
   const FIRST_MAX = printOnLetterhead ? 12 : 14;
   const LATER_MAX = printOnLetterhead ? 18 : 20;
@@ -211,18 +209,10 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     items.reduce((s, it) => s + slotCost(it), 0);
 
   const pageChunks: ItemRowWithSr[][] = [];
-  // Single page if Fit-to-page is on, or the item COUNT fits the cap and the
-  // weighted slots aren't excessively over (long wrapping descriptions).
-  // This keeps the verified 13–15 item single-page behaviour for normal bills.
-  // Fit on letterhead (Kashif's real-print verdict, 2026-10-14): within the
-  // proper letterhead margins a single page holds 15 items goods-only, or
-  // 12 when services are included (the second totals block takes ~3 items'
-  // space). Beyond those limits Fit paginates instead of invading the
-  // letterhead's printed zones.
-  const FIT_LETTERHEAD_MAX = goodsItems.length > 0 && serviceItems.length > 0 ? 12 : 15;
-  const normalFits = sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) <= SINGLE_MAX + 3;
-  const fitFits = !printOnLetterhead || (sequentialItems.length <= FIT_LETTERHEAD_MAX && slotsOf(sequentialItems) <= FIT_LETTERHEAD_MAX + 3);
-  if ((fitToOnePage && fitFits) || normalFits) {
+  // Single page if the item COUNT fits the cap and the weighted slots
+  // aren't excessively over (long wrapping descriptions). This keeps the
+  // verified 13–15 item single-page behaviour for normal bills.
+  if (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) <= SINGLE_MAX + 3) {
     pageChunks.push(sequentialItems);
   } else {
     pageChunks.push(takeFit(FIRST_MAX));
@@ -386,14 +376,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     <div
       className={`bill-sheet-wrapper w-full mx-auto text-black text-[10.5pt] leading-normal ${
         isHashirStyle ? 'font-sans' : 'font-serif firm-anwar-print'
-      } ${fitToOnePage ? 'fit-compact' : ''}`}
+      }`}
     >
-      <style>{`
-        .fit-compact table td { padding-top: 2px !important; padding-bottom: 2px !important; }
-        .fit-compact .compact-mb { margin-bottom: 4px !important; }
-        .fit-compact { font-size: 9.5pt !important; }
-        .fit-compact .text-2xl { font-size: 1.25rem !important; }
-      `}</style>
       {pageChunks.map((chunk, pageIndex) => {
         const isFirstPage = pageIndex === 0;
         const isLastPage = pageIndex === totalPages - 1;

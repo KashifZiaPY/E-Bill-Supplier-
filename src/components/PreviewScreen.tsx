@@ -65,7 +65,6 @@ export const PreviewScreen: React.FC<Props> = ({
     return saved !== null ? saved === 'true' : true;
   });
 
-  const [fitToOnePage, setFitToOnePage] = useState<boolean>(false);
   const [showDateOnBill, setShowDateOnBill] = useState<boolean>(() => {
     const saved = localStorage.getItem('bill-show-date-on-bill');
     return saved !== null ? saved === 'true' : true;
@@ -86,10 +85,10 @@ export const PreviewScreen: React.FC<Props> = ({
   };
 
   // Top and bottom margins (in inches). On pre-printed letterhead the
-  // letterhead margins ALWAYS win — Fit must never shrink them, or content
-  // prints over the letterhead's own text (real-print defect, 2026-10-14).
-  const topMargin = printOnLetterhead ? (settings.letterheadTop || 2.0) : (fitToOnePage ? 1.5 : 0.4);
-  const bottomMargin = printOnLetterhead ? (settings.letterheadBottom || 1.0) : (fitToOnePage ? 0.75 : 0.4);
+  // letterhead margins always apply, so content never prints over the
+  // letterhead's own text.
+  const topMargin = printOnLetterhead ? (settings.letterheadTop || 2.0) : 0.4;
+  const bottomMargin = printOnLetterhead ? (settings.letterheadBottom || 1.0) : 0.4;
 
   const currentFirmName = doc.firmName || settings.supplierName || 'Anwar Traders';
 
@@ -172,15 +171,6 @@ export const PreviewScreen: React.FC<Props> = ({
                 className="w-4 h-4 rounded accent-gold-500 cursor-pointer"
               />
               <span className="text-xs font-bold text-white">Pre-printed letterhead</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/15 border border-white/20 px-3 py-2 rounded-xl transition select-none" title="Squeeze a 2-page bill onto one page with tighter spacing (font stays readable)">
-              <input
-                type="checkbox"
-                checked={fitToOnePage}
-                onChange={(e) => setFitToOnePage(e.target.checked)}
-                className="w-4 h-4 rounded accent-gold-500 cursor-pointer"
-              />
-              <span className="text-xs font-bold text-white">Fit to 1 page</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/15 border border-white/20 px-3 py-2 rounded-xl transition select-none" title="Uncheck to leave the date blank on the printed bill for handwriting (stored date is kept for records)">
               <input
@@ -269,8 +259,8 @@ export const PreviewScreen: React.FC<Props> = ({
             paddingRight: '0.45in',
           }}
         >
-          {activeTab === 'BILL' && <BillPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} topPadIn={topMargin} bottomPadIn={bottomMargin} fitToOnePage={fitToOnePage} showDateOnBill={showDateOnBill} />}
-          {activeTab === 'GST' && <GstInvoicePrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} showDateOnBill={showDateOnBill} fitToOnePage={fitToOnePage} />}
+          {activeTab === 'BILL' && <BillPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} topPadIn={topMargin} bottomPadIn={bottomMargin} showDateOnBill={showDateOnBill} />}
+          {activeTab === 'GST' && <GstInvoicePrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} showDateOnBill={showDateOnBill} />}
           {activeTab === 'QUOTATION' && <QuotationPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
         </div>
       </div>

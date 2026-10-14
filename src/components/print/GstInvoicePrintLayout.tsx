@@ -8,10 +8,9 @@ interface Props {
   settings: SupplierSettings;
   printOnLetterhead: boolean;
   showDateOnBill?: boolean;
-  fitToOnePage?: boolean;
 }
 
-export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, showDateOnBill = true, fitToOnePage = false }) => {
+export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, showDateOnBill = true }) => {
   const items = safeNormalizeItems(doc.items || doc.Items);
   const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
     ? Number(doc.gstRate)
