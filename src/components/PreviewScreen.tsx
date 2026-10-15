@@ -70,6 +70,14 @@ export const PreviewScreen: React.FC<Props> = ({
     return saved !== null ? saved === 'true' : true;
   });
 
+  // Sales Tax Invoice form: itemised details vs the simple summary form.
+  // Only some buyers need the full item details on the invoice itself
+  // (Kashif, 2026-10-15) — chosen per print, remembered like the others.
+  const [gstDetailed, setGstDetailed] = useState<boolean>(() => {
+    const saved = localStorage.getItem('bill-gst-invoice-detailed');
+    return saved !== null ? saved === 'true' : true;
+  });
+
   const handleToggleLetterhead = (val: boolean) => {
     setPrintOnLetterhead(val);
     localStorage.setItem(STORAGE_KEY_LETTERHEAD, String(val));
@@ -78,6 +86,11 @@ export const PreviewScreen: React.FC<Props> = ({
   const handleToggleShowDate = (val: boolean) => {
     setShowDateOnBill(val);
     localStorage.setItem('bill-show-date-on-bill', String(val));
+  };
+
+  const handleToggleGstDetailed = (val: boolean) => {
+    setGstDetailed(val);
+    localStorage.setItem('bill-gst-invoice-detailed', String(val));
   };
 
   const handlePrint = () => {
@@ -181,6 +194,17 @@ export const PreviewScreen: React.FC<Props> = ({
               />
               <span className="text-xs font-bold text-white">Show date on bill</span>
             </label>
+            {activeTab === 'GST' && (
+              <label className="flex items-center gap-2 cursor-pointer bg-white/10 hover:bg-white/15 border border-white/20 px-3 py-2 rounded-xl transition select-none" title="On: the Sales Tax Invoice prints every item with its rate and tax. Off: the simple summary invoice (totals only, as per bill).">
+                <input
+                  type="checkbox"
+                  checked={gstDetailed}
+                  onChange={(e) => handleToggleGstDetailed(e.target.checked)}
+                  className="w-4 h-4 rounded accent-gold-500 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-white">Itemised details on GST invoice</span>
+              </label>
+            )}
             <button
               onClick={() => exportDocLineItemsToExcel(doc)}
               className="corp-btn-ghost !py-2 !border-white/20 !bg-white/10 !text-white hover:!bg-white/15 text-xs"
@@ -260,7 +284,7 @@ export const PreviewScreen: React.FC<Props> = ({
           }}
         >
           {activeTab === 'BILL' && <BillPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} topPadIn={topMargin} bottomPadIn={bottomMargin} showDateOnBill={showDateOnBill} />}
-          {activeTab === 'GST' && <GstInvoicePrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} showDateOnBill={showDateOnBill} />}
+          {activeTab === 'GST' && <GstInvoicePrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} showDateOnBill={showDateOnBill} detailed={gstDetailed} />}
           {activeTab === 'QUOTATION' && <QuotationPrintLayout doc={doc} settings={settings} printOnLetterhead={printOnLetterhead} />}
         </div>
       </div>

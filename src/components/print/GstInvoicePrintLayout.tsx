@@ -8,6 +8,8 @@ interface Props {
   settings: SupplierSettings;
   printOnLetterhead: boolean;
   showDateOnBill?: boolean;
+  /** true (default): itemised invoice; false: summary invoice (totals only). */
+  detailed?: boolean;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -24,7 +26,7 @@ interface InvoiceRow {
   slots: number;
 }
 
-export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, showDateOnBill = true }) => {
+export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, showDateOnBill = true, detailed = true }) => {
   const items = safeNormalizeItems(doc.items || doc.Items);
   const gstRate = (doc.gstRate !== undefined && doc.gstRate !== null && Number(doc.gstRate) >= 0)
     ? Number(doc.gstRate)
@@ -101,6 +103,9 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
     rows.forEach((r) => { r.inc = round2(r.amount + r.gstAmt); });
   }
   const hasItemRows = rows.length > 0;
+  // Itemised form only when the print choice asks for it AND the document
+  // has goods rows; otherwise the summary form prints (old behaviour).
+  const showItems = detailed && hasItemRows;
 
   /* Pagination, same sheet discipline as the Bill: page capacities in row
      slots, the last sheet reserving room for the TOTAL row, the tax
@@ -122,7 +127,7 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
     return out;
   };
   const chunks: InvoiceRow[][] = [];
-  if (hasItemRows) {
+  if (showItems) {
     const rest = [...rows];
     chunks.push(takeFit(rest, FIRST_MAX));
     while (rest.length > 0) chunks.push(takeFit(rest, LATER_MAX));
@@ -138,7 +143,7 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
       chunks.push(second);
     }
   }
-  const totalSheets = hasItemRows ? chunks.length : 1;
+  const totalSheets = showItems ? chunks.length : 1;
 
   const pctLabel = (rate: number) => `${Math.round(rate * 10000) / 100}%`;
 
@@ -181,7 +186,7 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
 
   return (
     <>
-      {(hasItemRows ? chunks : [[] as InvoiceRow[]]).map((chunk, sheetIdx) => {
+      {(showItems ? chunks : [[] as InvoiceRow[]]).map((chunk, sheetIdx) => {
         const isFirst = sheetIdx === 0;
         const isLastSheet = sheetIdx === totalSheets - 1;
         return (
@@ -264,7 +269,7 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
                   </div>
                 </div>
 
-                {hasItemRows && (
+                {showItems && (
                   <div className="text-[9.5pt] font-bold text-black mb-1.5">
                     Items as per Bill No. {docNo}
                   </div>
@@ -282,7 +287,7 @@ export const GstInvoicePrintLayout: React.FC<Props> = ({ doc, settings, printOnL
             <table className="w-full border-collapse border border-black text-[9.5pt] mb-2.5 bg-white">
               {tableHead}
               <tbody>
-                {hasItemRows ? (
+                {showItems ? (
                   <>
                     {chunk.map((r, ri) => (
                       <tr key={ri} className="border-b border-black font-medium bg-white">
