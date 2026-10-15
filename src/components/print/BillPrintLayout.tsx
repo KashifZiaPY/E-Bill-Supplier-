@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { DocumentRecord, SupplierSettings } from '../../types/billing';
 import { calculateTotals, formatCurrency, formatDateDisplay, safeNormalizeItems, toProperCase } from '../../utils/formatters';
 import { numberToWordsPakistani } from '../../utils/numberToWords';
@@ -24,6 +24,59 @@ interface ItemRowWithSr {
   tax: 'GST' | 'PST' | 'None';
   sectionHeader?: string;
 }
+
+
+// ───────────────────────── A4 geometry & density ladder ─────────────────────────
+const PX_PER_IN = 96;
+const A4_H_PX = (297 / 25.4) * PX_PER_IN;                 // A4 height  ≈ 1122.5px
+const PRINT_W_PX = (210 / 25.4) * PX_PER_IN - 0.9 * PX_PER_IN; // A4 width − 2 × 0.45in side margins (@page)
+const SAFETY_PX = 14;                                      // ≈ 3.7mm guard against printer/rounding variance
+
+/** Vertical spacing only — font sizes are never changed. Level 0 = previous look. */
+const DENSITY_LEVELS = [
+  { py: 4, lh: 1.4 },   // comfortable
+  { py: 3, lh: 1.3 },   // standard
+  { py: 2, lh: 1.25 },  // compact
+  { py: 1, lh: 1.2 },   // dense (maximum entries per page)
+];
+
+interface PageMetrics {
+  headFirst: number; headRun: number; thead: number; grand: number;
+  tableExtra: number; cont: number; lastBlock: number; footer: number;
+  groups: Record<number, number>;
+}
+
+const pageUsed = (M: PageMetrics, rows: ItemRowWithSr[], isFirst: boolean, isLast: boolean): number =>
+  (isFirst ? M.headFirst : M.headRun) + M.thead + M.tableExtra + M.footer +
+  rows.reduce((s, r) => s + (M.groups[r.sr] || 0), 0) +
+  (isLast ? M.grand + M.lastBlock : M.cont);
+
+/** Greedy pixel fill. Pure function: easy to unit-test. */
+const paginateMeasured = (M: PageMetrics, items: ItemRowWithSr[], budget: number): ItemRowWithSr[][] => {
+  const fits = (rows: ItemRowWithSr[], first: boolean, last: boolean) => pageUsed(M, rows, first, last) <= budget;
+  const pages: ItemRowWithSr[][] = [];
+  let cur: ItemRowWithSr[] = [];
+  for (const it of items) {
+    if (cur.length === 0 || fits([...cur, it], pages.length === 0, false)) cur.push(it);
+    else { pages.push(cur); cur = [it]; }
+  }
+  pages.push(cur);
+
+  // The last page must also hold grand total + words + signature.
+  const lastIdx = () => pages.length - 1;
+  if (!fits(pages[lastIdx()], pages.length === 1, true) && pages[lastIdx()].length > 1) {
+    const prev = pages[lastIdx()];
+    const fresh: ItemRowWithSr[] = [prev.pop()!];
+    pages.push(fresh);
+    // Avoid a lonely 1-item last page: pull up to 2 more from the previous page while both pages still fit.
+    while (fresh.length < 3 && prev.length > 3) {
+      const cand = prev[prev.length - 1];
+      if (!fits([cand, ...fresh], false, true)) break;
+      fresh.unshift(prev.pop()!);
+    }
+  }
+  return pages;
+};
 
 export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterhead, topPadIn, bottomPadIn, showDateOnBill = true }) => {
   const rawItems = safeNormalizeItems(doc.items || doc.Items);
@@ -175,157 +228,118 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
     }
   }
 
-  // Intelligent Multi-Page Pagination.
-  // Single-page budgets were discovered PHYSICALLY (2026-10-14): bills were
-  // force-rendered onto one sheet in a test harness and printed through
-  // Chrome's print engine under the app's real @page margins; the largest
-  // counts that truly fit one A4 page are — goods/mixed: Anwar plain 17/14,
-  // Hashir plain 15/11, Anwar letterhead 14/10, Hashir letterhead 12/8.
-  // (An earlier same-day calibration only re-measured the app's own splits
-  // and understated these by 2–3 items.) The budgets below keep the app one
-  // item under the physical limit as safety: one-page maxima are now
-  // Anwar plain 16/12, Hashir plain 14/10, Anwar letterhead 13/9,
-  // Hashir letterhead 11/7. Item slots come from slotCost below (wrapped
-  // descriptions count extra); totals rows are: goods block 3, services
-  // block 3, exempt block 1, plus the final grand total row (1) — that is
-  // why a mixed bill fits fewer items than a goods-only bill, and why
-  // Hashir (taller sheet) has lower budgets than Anwar.
-  // Multi-page pages reserve room for any section totals block ending on
-  // them (the block's cost rides inside slotCost, below).
-  // Reader ease is protected: font sizes never shrink — the extra capacity
-  // came from cutting wasted padding in the totals rows, the grand total
-  // row and the words/signature block (measured 2026-10-14: ~52px per
-  // Anwar sheet, ~34px + a 22px table-header saving per Hashir sheet).
-  // (The old "Fit to 1 page" option was removed 2026-10-14 by Kashif's
-  // decision: it invaded the letterhead's printed zones and caused repeated
-  // defects. Pagination below is the single, settled behaviour.)
-  const SINGLE_MAX = printOnLetterhead ? 13 : 16;
-  const SINGLE_BUDGET = isHashirStyle
-    ? (printOnLetterhead ? 16 : 19)
-    : (printOnLetterhead ? 18 : 21);
-  // Multi-page page capacities, MEASURED 2026-10-14 from filled pages
-  // (headroom to the physical page box, minus a 2-slot safety margin for
-  // phone-printer variance). The old caps (12–14 / 18–20) were never
-  // measured and starved page 1 — Bill #227 closed its first page at 8
-  // items with half the page blank.
-  const FIRST_MAX = isHashirStyle
-    ? (printOnLetterhead ? 17 : 21)
-    : (printOnLetterhead ? 20 : 23);
-  const LATER_MAX = isHashirStyle
-    ? (printOnLetterhead ? 21 : 26)
-    : (printOnLetterhead ? 21 : 28);
-  // The last page additionally carries the grand total row, the
-  // amount-in-words line and the signature block (~5 slots of room).
-  const LAST_MAX = LATER_MAX - 5;
 
-  const CHARS_PER_LINE = isHashirStyle ? 48 : 55;
-  // Totals follow their sections (Kashif's decision, 2026-10-14): each
-  // section's totals block prints directly under its last item, on whichever
-  // page that item falls. That item therefore also carries the block's slot
-  // cost, so every page reserves room for any block landing on it. Only the
-  // grand total row (+1 slot) stays behind on the last page.
+  // ═══════════════════════════════════════════════════════════════════════
+  //  MEASURED PAGINATION  (replaces the old guessed "slot" budgets — 2026-10-15)
+  //
+  //  Old approach: hand-calibrated item counts per firm/paper ("Anwar plain
+  //  16/12 …") and ~29px rows. Any wrapped line, font change or margin change
+  //  silently broke the numbers, and rows were too tall to start with.
+  //
+  //  New approach, 3 steps — no magic item counts anywhere:
+  //   1. MEASURE  every real element (page header, table head, each item
+  //      "group" = [section header + row + section totals], grand total,
+  //      words+signature, footer) in a hidden probe that has the exact print
+  //      width (A4 − side margins) and the same fonts/classes as the sheet.
+  //   2. FILL     each A4 page greedily to the pixel: page budget =
+  //      A4 height − real @page top/bottom margins − safety. A page closes
+  //      only when the NEXT group genuinely does not fit.
+  //   3. DENSITY  rows have 4 vertical-spacing levels (font size never
+  //      changes). The most comfortable level that achieves the smallest
+  //      possible page count is chosen automatically, so a 7-item bill keeps
+  //      airy rows while a 20-item bill tightens itself to stay on one page.
+  // ═══════════════════════════════════════════════════════════════════════
   const sectionFinalSrs = new Set<number>();
   sequentialItems.forEach((it, i) => {
     if (i === sequentialItems.length - 1 || sequentialItems[i + 1].tax !== it.tax) sectionFinalSrs.add(it.sr);
   });
-  const sectionBlockCost = (tax: 'GST' | 'PST' | 'None'): number =>
-    tax === 'GST' ? (isUniformGoodsRate ? 3 : distinctGoodsRates.length + 3) : tax === 'PST' ? 3 : 1;
-  // Slot cost: 1 per item, +1 for each wrapped line beyond the first, +1 for
-  // a section header, + the section's totals block on its last item.
-  const slotCost = (it: ItemRowWithSr): number => {
-    const lines = Math.max(1, Math.ceil((it.description || '').length / CHARS_PER_LINE));
-    return 1 + (lines - 1) + (it.sectionHeader ? 1 : 0) + (sectionFinalSrs.has(it.sr) ? sectionBlockCost(it.tax) : 0);
-  };
 
-  let remaining = [...sequentialItems];
-  const takeFit = (cap: number): ItemRowWithSr[] => {
-    const pg: ItemRowWithSr[] = [];
-    let used = 0;
-    while (remaining.length > 0 && used + slotCost(remaining[0]) <= cap) {
-      const it = remaining.shift()!;
-      pg.push(it);
-      used += slotCost(it);
-    }
-    if (pg.length === 0 && remaining.length > 0) pg.push(remaining.shift()!); // guarantee progress
-    return pg;
-  };
-  const slotsOf = (items: ItemRowWithSr[]): number =>
-    items.reduce((s, it) => s + slotCost(it), 0);
+  const bySr = new Map<number, ItemRowWithSr>(sequentialItems.map((it) => [it.sr, it]));
+  const topIn = topPadIn ?? (printOnLetterhead ? 2.0 : 0.4);
+  const bottomIn = bottomPadIn ?? (printOnLetterhead ? 1.0 : 0.4);
+  const pageBudgetPx = A4_H_PX - (topIn + bottomIn) * PX_PER_IN - SAFETY_PX;
 
-  const pageChunks: ItemRowWithSr[][] = [];
-  // Single page if the item count fits the rail AND item slots (now
-  // including every section's totals block) + the grand total row fit the
-  // measured budget for this firm and paper.
-  if (sequentialItems.length <= SINGLE_MAX && slotsOf(sequentialItems) + 1 <= SINGLE_BUDGET) {
-    pageChunks.push(sequentialItems);
-  } else {
-    pageChunks.push(takeFit(FIRST_MAX));
-    while (remaining.length > 0) pageChunks.push(takeFit(LATER_MAX));
-    // The last page must also fit the grand total row, amount-in-words and
-    // the signature block (LAST_MAX; the section totals blocks already ride
-    // inside the items' slot costs) — shift items off if tight.
-    while (pageChunks.length > 1) {
-      const last = pageChunks[pageChunks.length - 1];
-      if (slotsOf(last) <= LAST_MAX) break;
-      const move: ItemRowWithSr[] = [];
-      while (last.length > 1 && slotsOf(last) > LAST_MAX) move.push(last.shift()!);
-      if (move.length === 0) break;
-      pageChunks.splice(pageChunks.length - 1, 0, move);
-    }
-    if (pageChunks.length === 1) pageChunks.push([]); // totals-only last page
-    // Orphan control for ITEM-ONLY pages: no such page may end up with only
-    // 1–3 items when a neighbouring page can spare some. Walk backwards; a
-    // short page first borrows from the NEXT page (keeps earlier pages full
-    // — the usual case is the totals-spill page sitting just before the last
-    // page), then from the previous page. Slot caps are respected
-    // throughout and no donor drops below 5 items.
-    // The totals-carrying LAST page is never topped up: it already carries
-    // a section totals block, the grand total, amount-in-words and the
-    // signature, so it is complete even with a single item — topping it up
-    // only guts the previous page (Bill #227 printed 8+3 with a half-blank
-    // page 1, 2026-10-14). If the last page would carry totals ALONE, it
-    // takes exactly one item from the previous page.
-    for (let i = pageChunks.length - 1; i >= 1; i--) {
-      const target = pageChunks[i];
-      if (i === pageChunks.length - 1) {
-        if (target.length === 0) {
-          const source = pageChunks[i - 1];
-          if (source.length > 1) target.unshift(source.pop()!);
-        }
-        continue;
-      }
-      if (target.length > 3) continue;
-      const want = 5;
-      const cap = LATER_MAX;
-      const next = pageChunks[i + 1];
-      if (next) {
-        while (target.length < want && next.length > 5) {
-          const candidate = next[0];
-          if (slotsOf(target) + slotCost(candidate) > cap) break;
-          target.push(next.shift()!);
-        }
-      }
-      const source = pageChunks[i - 1];
-      while (target.length < want && source.length > 5) {
-        const candidate = source[source.length - 1];
-        if (slotsOf(target) + slotCost(candidate) > cap) break;
-        target.unshift(source.pop()!);
-      }
-    }
-  }
+  const probeRef = useRef<HTMLDivElement>(null);
+  const planKeyRef = useRef('');
+  const [plan, setPlan] = useState<{ level: number; pages: number[][] } | null>(null);
+  const [fontTick, setFontTick] = useState(0);
 
+  // Re-measure once web fonts are ready (text width changes line wrapping).
+  useLayoutEffect(() => {
+    let alive = true;
+    (document as any).fonts?.ready?.then(() => { if (alive) setFontTick((t) => t + 1); });
+    return () => { alive = false; };
+  }, []);
+
+  // Runs after every render, but only commits state when the plan changes.
+  useLayoutEffect(() => {
+    const probe = probeRef.current;
+    if (!probe || sequentialItems.length === 0) return;
+
+    const outerH = (el: Element | null): number => {
+      if (!el) return 0;
+      const cs = getComputedStyle(el);
+      return el.getBoundingClientRect().height + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+    };
+    const q = (k: string) => probe.querySelector(`[data-m="${k}"]`);
+
+    const measure = (lvl: { py: number; lh: number }): PageMetrics => {
+      probe.style.setProperty('--brow-py', `${lvl.py}px`);
+      probe.style.setProperty('--brow-lh', String(lvl.lh));
+      const groups: Record<number, number> = {};
+      let groupsSum = 0;
+      probe.querySelectorAll('[data-g]').forEach((el) => {
+        const h = el.getBoundingClientRect().height;
+        groups[Number((el as HTMLElement).dataset.g)] = h;
+        groupsSum += h;
+      });
+      const thead = (q('thead') as HTMLElement | null)?.getBoundingClientRect().height ?? 0;
+      const grand = (q('grand') as HTMLElement | null)?.getBoundingClientRect().height ?? 0;
+      const tableEl = q('table') as HTMLElement | null;
+      const tableH = tableEl ? outerH(tableEl) : 0;
+      return {
+        headFirst: outerH(q('headFirst')),
+        headRun: outerH(q('headRun')),
+        thead, grand, groups,
+        tableExtra: Math.max(0, tableH - thead - grand - groupsSum),   // borders + bottom margin
+        cont: outerH(q('cont')),
+        lastBlock: outerH(q('lastBlock')),
+        footer: outerH(q('footer')),
+      };
+    };
+
+    const pagesPerLevel = DENSITY_LEVELS.map((lvl) =>
+      paginateMeasured(measure(lvl), sequentialItems, pageBudgetPx).map((pg) => pg.map((it) => it.sr))
+    );
+    const tightest = pagesPerLevel[pagesPerLevel.length - 1].length;
+    // most comfortable level that still reaches the minimum page count
+    let level = pagesPerLevel.findIndex((p) => p.length === tightest);
+    if (level < 0) level = DENSITY_LEVELS.length - 1;
+    const next = { level, pages: pagesPerLevel[level] };
+    const key = JSON.stringify(next);
+    if (key !== planKeyRef.current) {
+      planKeyRef.current = key;
+      setPlan(next);
+    }
+  });
+  void fontTick;
+
+  const density = DENSITY_LEVELS[plan?.level ?? 0];
+  const pageChunks: ItemRowWithSr[][] = plan
+    ? plan.pages.map((srs) => srs.map((sr) => bySr.get(sr)!).filter(Boolean))
+    : [sequentialItems];
   const totalPages = pageChunks.length;
 
   // Section subtotal row fragments — each prints under its section's last item.
   const goodsSubtotalRows = goodsSub > 0 && (
     <>
       <tr className={`border-t-2 ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-        <td colSpan={4} className={`text-right py-1 px-2.5 font-bold ${
+        <td colSpan={4} className={`text-right bill-cell px-2.5 font-bold ${
           isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
         }`}>
           Sub Total (Goods):
         </td>
-        <td className="text-right py-1 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+        <td className="text-right bill-cell px-2.5 font-bold whitespace-nowrap font-mono text-black">
           {formatCurrency(goodsSub)}
         </td>
       </tr>
@@ -333,47 +347,47 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
         <>
           {computed.gstBreakdown.map((b) => (
             <tr key={b.ratePercent} className={`border-b ${isHashirStyle ? 'border-slate-300 bg-white' : 'border-black bg-white'} text-[9.5pt]`}>
-              <td colSpan={4} className={`text-right py-1 px-2.5 font-semibold ${
+              <td colSpan={4} className={`text-right bill-cell px-2.5 font-semibold ${
                 isHashirStyle ? 'border-r border-slate-300 text-slate-800' : 'border-r border-black text-black'
               }`}>
                 GST @ {b.ratePercent}% (on Rs. {formatCurrency(b.taxableAmount)}):
               </td>
-              <td className="text-right py-1 px-2.5 font-semibold whitespace-nowrap font-mono text-black">
+              <td className="text-right bill-cell px-2.5 font-semibold whitespace-nowrap font-mono text-black">
                 {formatCurrency(b.taxAmount)}
               </td>
             </tr>
           ))}
           <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-            <td colSpan={4} className={`text-right py-1 px-2.5 font-bold ${
+            <td colSpan={4} className={`text-right bill-cell px-2.5 font-bold ${
               isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
             }`}>
               Total GST on Goods:
             </td>
-            <td className="text-right py-1 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+            <td className="text-right bill-cell px-2.5 font-bold whitespace-nowrap font-mono text-black">
               {formatCurrency(gst)}
             </td>
           </tr>
         </>
       ) : (
         <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-          <td colSpan={4} className={`text-right py-1 px-2.5 font-bold ${
+          <td colSpan={4} className={`text-right bill-cell px-2.5 font-bold ${
             isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
           }`}>
             {(computed.gstBreakdown?.[0]?.ratePercent ?? (isUniformGoodsRate ? uniformRate : gstPercent))}% GST on Goods:
           </td>
-          <td className="text-right py-1 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+          <td className="text-right bill-cell px-2.5 font-bold whitespace-nowrap font-mono text-black">
             {formatCurrency(gst)}
           </td>
         </tr>
       )}
       {/* Section total: goods inclusive of GST */}
       <tr className={`border-y-2 ${isHashirStyle ? 'border-slate-900 bg-white' : 'border-black bg-white'} text-[10.5pt]`}>
-        <td colSpan={4} className={`text-right py-1 px-2.5 font-black ${
+        <td colSpan={4} className={`text-right bill-cell px-2.5 font-black ${
           isHashirStyle ? 'border-r border-slate-500 text-slate-950' : 'border-r border-black text-black'
         }`}>
           Total (Goods incl. GST):
         </td>
-        <td className="text-right py-1 px-2.5 font-black whitespace-nowrap font-mono text-black">
+        <td className="text-right bill-cell px-2.5 font-black whitespace-nowrap font-mono text-black">
           {formatCurrency(goodsSub + gst)}
         </td>
       </tr>
@@ -383,33 +397,33 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
   const servicesSubtotalRows = serviceSub > 0 && (
     <>
       <tr className={`border-t ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-        <td colSpan={4} className={`text-right py-1 px-2.5 font-bold ${
+        <td colSpan={4} className={`text-right bill-cell px-2.5 font-bold ${
           isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
         }`}>
           Sub Total (Services):
         </td>
-        <td className="text-right py-1 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+        <td className="text-right bill-cell px-2.5 font-bold whitespace-nowrap font-mono text-black">
           {formatCurrency(serviceSub)}
         </td>
       </tr>
       <tr className={`border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-        <td colSpan={4} className={`text-right py-1 px-2.5 font-bold ${
+        <td colSpan={4} className={`text-right bill-cell px-2.5 font-bold ${
           isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
         }`}>
           {pstPercent}% PST on Services:
         </td>
-        <td className="text-right py-1 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+        <td className="text-right bill-cell px-2.5 font-bold whitespace-nowrap font-mono text-black">
           {formatCurrency(pst)}
         </td>
       </tr>
       {/* Section total: services inclusive of PST */}
       <tr className={`border-y-2 ${isHashirStyle ? 'border-slate-900 bg-white' : 'border-black bg-white'} text-[10.5pt]`}>
-        <td colSpan={4} className={`text-right py-1 px-2.5 font-black ${
+        <td colSpan={4} className={`text-right bill-cell px-2.5 font-black ${
           isHashirStyle ? 'border-r border-slate-500 text-slate-950' : 'border-r border-black text-black'
         }`}>
           Total (Services incl. PST):
         </td>
-        <td className="text-right py-1 px-2.5 font-black whitespace-nowrap font-mono text-black">
+        <td className="text-right bill-cell px-2.5 font-black whitespace-nowrap font-mono text-black">
           {formatCurrency(serviceSub + pst)}
         </td>
       </tr>
@@ -418,43 +432,29 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
   const otherSubtotalRows = otherSub > 0 && (
     <tr className={`border-t border-b ${isHashirStyle ? 'border-slate-800 bg-white' : 'border-black bg-white'} text-[10pt]`}>
-      <td colSpan={4} className={`text-right py-1 px-2.5 font-bold ${
+      <td colSpan={4} className={`text-right bill-cell px-2.5 font-bold ${
         isHashirStyle ? 'border-r border-slate-400 text-slate-900' : 'border-r border-black text-black'
       }`}>
         Sub Total (Exempt / Other):
       </td>
-      <td className="text-right py-1 px-2.5 font-bold whitespace-nowrap font-mono text-black">
+      <td className="text-right bill-cell px-2.5 font-bold whitespace-nowrap font-mono text-black">
         {formatCurrency(otherSub)}
       </td>
     </tr>
   );
 
-  return (
-    <div
-      className={`bill-sheet-wrapper w-full mx-auto text-black text-[10.5pt] leading-normal ${
-        isHashirStyle ? 'font-sans' : 'font-serif firm-anwar-print'
-      }`}
-    >
-      {pageChunks.map((chunk, pageIndex) => {
-        const isFirstPage = pageIndex === 0;
-        const isLastPage = pageIndex === totalPages - 1;
-        const currentPageNum = pageIndex + 1;
+  const tableClass = `w-full border-collapse text-[10pt] leading-[1.4] mb-2 bg-white ${
+      isHashirStyle ? 'border border-slate-400' : 'border border-black'
+    }`;
 
-        return (
-          <div
-            key={pageIndex}
-            className={`print-sheet bg-white w-full print:bg-white print:text-black mb-8 print:mb-0 ${
-              !isLastPage ? 'print:break-after-page print:page-break-after-always' : ''
-            }`}
-          >
-            {/* Page 1 Full Header OR Subsequent Pages Running Header */}
-            {isFirstPage ? (
+  const firstHead = (
+    <>
               <>
                 {/* 1. HASHIR TRADERS: Modern Split Corporate Header */}
                 {isHashirStyle ? (
                   <>
                     {!printOnLetterhead && (
-                      <div className="border-b-2 border-slate-900 pb-3 mb-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div className="border-b-2 border-slate-900 pb-3 mb-3 flex flex-row items-start justify-between gap-3">
                         {/* Left: Brand Monogram & Corporate Identity */}
                         <div className="flex-1">
                           <div className="flex items-center gap-2.5 mb-1">
@@ -480,7 +480,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                         </div>
 
                         {/* Right: Modern Document Badge Card */}
-                        <div className="text-right sm:w-56 shrink-0 bg-white border border-slate-300 rounded-xl p-2.5">
+                        <div className="text-right w-56 shrink-0 bg-white border border-slate-300 rounded-xl p-2.5">
                           <span className="inline-block text-[9px] font-black uppercase tracking-wider bg-white text-slate-900 border border-slate-900 px-2 py-0.5 rounded">
                             COMMERCIAL BILL / INVOICE
                           </span>
@@ -520,8 +520,8 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
 
                     {/* Client & Reference Info Box: Modern Styled Card */}
                     <div className="mb-3 p-3 rounded-xl border border-slate-300 bg-white text-[10pt] border-l-4 border-l-slate-900">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <div className="sm:col-span-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2">
                           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">
                             BILLED TO
                           </span>
@@ -532,7 +532,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                             <p className="text-slate-700 text-[9.5pt] mt-0.5">{clientAddress}</p>
                           )}
                         </div>
-                        <div className="text-left sm:text-right space-y-0.5">
+                        <div className="text-right space-y-0.5">
                           {clientNTN && (
                             <div>
                               <span className="text-[9px] font-bold text-slate-500 block">CLIENT NTN</span>
@@ -618,8 +618,17 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   </>
                 )}
               </>
-            ) : (
-              /* Subsequent Pages Running Header */
+            {isHashirStyle && !printOnLetterhead && (
+              <div className="border-y-2 border-slate-900 py-1.5 mb-2.5 text-center">
+                <span className="text-xl font-black uppercase tracking-[0.25em] mr-[-0.25em] text-slate-900 font-sans">
+                  Bill
+                </span>
+              </div>
+            )}
+    </>
+  );
+
+  const runHead = (
               <div className="flex justify-between items-center border-b-2 border-black pb-1.5 mb-2.5 pt-1">
                 <div>
                   <span className="font-black text-sm uppercase tracking-wide">
@@ -631,22 +640,9 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   <div>Date: {showDateOnBill ? docDate : '........................'}</div>
                 </div>
               </div>
-            )}
+  );
 
-            {/* Hashir: distinct centered document title band (Anwar uses the classic left/right title row above) */}
-            {isHashirStyle && !printOnLetterhead && (
-              <div className="border-y-2 border-slate-900 py-1.5 mb-2.5 text-center">
-                <span className="text-xl font-black uppercase tracking-[0.25em] mr-[-0.25em] text-slate-900 font-sans">
-                  Bill
-                </span>
-              </div>
-            )}
-
-            {/* Items Table */}
-            <table className={`w-full border-collapse text-[10pt] leading-[1.4] mb-2 bg-white ${
-              isHashirStyle ? 'border border-slate-400' : 'border border-black'
-            }`}>
-              <thead>
+  const theadRow = (
                 <tr className={`${
                   isHashirStyle
                     ? 'bg-slate-100 text-slate-900 font-bold text-center text-[9.5pt] uppercase tracking-wider border-b-2 border-slate-900'
@@ -658,63 +654,61 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   <th className={`py-1 px-2 w-24 whitespace-nowrap text-right ${isHashirStyle ? 'border-r border-slate-700' : 'border-r border-black'}`}>{isHashirStyle ? 'Rate (PKR)' : 'Rate (Rs.)'}</th>
                   <th className="py-1 px-2 w-28 text-right whitespace-nowrap">{isHashirStyle ? 'Amount (PKR)' : 'Amount (Rs.)'}</th>
                 </tr>
-              </thead>
-              <tbody>
-                {chunk.map((it, idx) => {
-                  // Each section's totals block prints directly beneath its
-                  // last item, on whichever page that item falls (totals
-                  // follow their sections — Kashif's decision, 2026-10-14).
-                  const isLastOfSection = sectionFinalSrs.has(it.sr);
-                  return (
-                    <React.Fragment key={it.sr}>
+  );
+
+  // One "group" = optional section header + the item row + (if it is the
+  // last item of its section) that section's totals block. A group is never
+  // split across pages.
+  const renderGroup = (it: ItemRowWithSr) => {
+    const isLastOfSection = sectionFinalSrs.has(it.sr);
+    return (
+      <>
                       {it.sectionHeader && (
                         <tr className={`${
                           isHashirStyle
                             ? 'bg-white border-t border-b border-slate-300 font-bold text-xs uppercase tracking-wide text-slate-900'
                             : 'bg-white border-t border-b border-black font-bold text-xs uppercase tracking-wide text-black'
                         }`}>
-                          <td colSpan={5} className="py-1 px-2.5">
+                          <td colSpan={5} className="bill-cell px-2.5">
                             {it.sectionHeader}
                           </td>
                         </tr>
                       )}
-                      <tr className={`border-b-2 ${isHashirStyle ? 'border-slate-400' : 'border-gray-500'} ${
+                      <tr className={`border-b ${isHashirStyle ? 'border-slate-400' : 'border-gray-500'} ${
                         'bg-white'
                       }`}>
-                        <td className={`text-center py-1 px-1.5 font-mono font-bold text-xs ${
+                        <td className={`text-center bill-cell px-1.5 font-mono font-bold text-xs ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
                           {it.sr}
                         </td>
-                        <td className={`text-left py-1 px-2 font-medium ${
+                        <td className={`text-left bill-cell px-2 font-medium ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
                           {toProperCase(it.description)}
                         </td>
-                        <td className={`text-center py-1 px-1.5 whitespace-nowrap ${
+                        <td className={`text-center bill-cell px-1.5 whitespace-nowrap ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
                           {it.qty} {it.unit}
                         </td>
-                        <td className={`text-right py-1 px-2 whitespace-nowrap font-mono ${
+                        <td className={`text-right bill-cell px-2 whitespace-nowrap font-mono ${
                           isHashirStyle ? 'border-r border-slate-300' : 'border-r border-black'
                         }`}>
                           {formatCurrency(it.rate)}
                         </td>
-                        <td className="text-right py-1 px-2 font-bold whitespace-nowrap font-mono">
+                        <td className="text-right bill-cell px-2 font-bold whitespace-nowrap font-mono">
                           {formatCurrency(it.amount)}
                         </td>
                       </tr>
                       {isLastOfSection && it.tax === 'GST' && goodsSubtotalRows}
                       {isLastOfSection && it.tax === 'PST' && servicesSubtotalRows}
                       {isLastOfSection && it.tax === 'None' && otherSubtotalRows}
-                    </React.Fragment>
-                  );
-                })}
+      </>
+    );
+  };
 
-                {/* Grand Total on the LAST page (section subtotals are
-                    interleaved under their sections above) */}
-                {isLastPage && (
+  const grandRow = (
                   <>
                     {/* GRAND TOTAL ROW: Distinctive Firm Presentation */}
                     {isHashirStyle ? (
@@ -729,7 +723,7 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       </tr>
                     ) : (
                       /* Anwar Traders Classic Govt Style Grand Total */
-                      <tr className="bg-white border-t-2 border-black border-b-[3px] border-b-black text-[12pt] sm:text-[12.5pt] font-black">
+                      <tr className="bg-white border-t-2 border-black border-b-[3px] border-b-black text-[12.5pt] font-black">
                         <td colSpan={4} className="border-r border-black text-right py-1.5 px-3 tracking-wider uppercase text-black font-black font-serif">
                           GRAND TOTAL (PKR):
                         </td>
@@ -739,23 +733,15 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                       </tr>
                     )}
                   </>
-                )}
-              </tbody>
-            </table>
+  );
 
-            {!isLastPage && (
+  const contLine = (
               <div className="text-right text-xs italic font-bold text-black py-1">
                 (Continued on next sheet...)
               </div>
-            )}
+  );
 
-            {/* Amount in words, signatures and the page footer strip form
-                ONE unbreakable block on the last page: the strip must never
-                strand alone on an extra page (seen on Bill #71 when the
-                phone's print dialog defaulted to Letter paper, 2026-10-14). */}
-            <div className={isLastPage ? 'break-inside-avoid' : ''} style={isLastPage ? { pageBreakInside: 'avoid' } : undefined}>
-            {/* Amount in words & Signatures on Final Page */}
-            {isLastPage && (
+  const lastBlockInner = (
               <>
                 <div className={`p-2 mb-2 text-[10pt] ${
                   isHashirStyle
@@ -802,15 +788,80 @@ export const BillPrintLayout: React.FC<Props> = ({ doc, settings, printOnLetterh
                   </div>
                 )}
               </>
-            )}
+  );
 
-            {/* Bottom Page Footer on EVERY Sheet */}
+  const renderFooter = (currentPageNum: number, pages: number) => (
             <div className="flex justify-between items-center border-t border-black pt-1.5 mt-2 text-[8.5pt] text-black">
               <span>{firmName} · Bill #{docNo} · {clientName}</span>
               <span className="font-bold text-black">
-                Page {currentPageNum} of {totalPages}
+                Page {currentPageNum} of {pages}
               </span>
             </div>
+  );
+
+  return (
+    <div
+      className={`bill-sheet-wrapper w-full mx-auto text-black text-[10.5pt] leading-normal ${
+        isHashirStyle ? 'font-sans' : 'font-serif firm-anwar-print'
+      }`}
+      style={{ ['--brow-py' as any]: `${density.py}px`, ['--brow-lh' as any]: String(density.lh) }}
+    >
+      {/* Hidden measuring probe: exact print width, same classes as the real sheet.
+          .no-print => display:none when printing, so it never takes paper space. */}
+      <div
+        ref={probeRef}
+        aria-hidden="true"
+        className="no-print"
+        style={{ position: 'absolute', left: '-10000px', top: 0, width: `${PRINT_W_PX}px`, visibility: 'hidden', pointerEvents: 'none' }}
+      >
+        <div data-m="headFirst" className="flow-root">{firstHead}</div>
+        <div data-m="headRun" className="flow-root">{runHead}</div>
+        <table data-m="table" className={tableClass}>
+          <thead data-m="thead">{theadRow}</thead>
+          {sequentialItems.map((it) => (
+            <tbody key={it.sr} data-g={it.sr}>{renderGroup(it)}</tbody>
+          ))}
+          <tbody data-m="grand">{grandRow}</tbody>
+        </table>
+        <div data-m="cont" className="flow-root">{contLine}</div>
+        <div data-m="lastBlock" className="flow-root">{lastBlockInner}</div>
+        <div data-m="footer" className="flow-root">{renderFooter(1, 1)}</div>
+      </div>
+
+      {pageChunks.map((chunk, pageIndex) => {
+        const isFirstPage = pageIndex === 0;
+        const isLastPage = pageIndex === totalPages - 1;
+        const currentPageNum = pageIndex + 1;
+
+        return (
+          <div
+            key={pageIndex}
+            className={`print-sheet bg-white w-full print:bg-white print:text-black mb-8 print:mb-0 ${
+              !isLastPage ? 'print:break-after-page print:page-break-after-always' : ''
+            }`}
+          >
+            {isFirstPage ? firstHead : runHead}
+
+            {/* Items Table */}
+            <table className={tableClass}>
+              <thead>{theadRow}</thead>
+              <tbody>
+                {chunk.map((it) => (
+                  <React.Fragment key={it.sr}>{renderGroup(it)}</React.Fragment>
+                ))}
+                {/* Grand Total on the LAST page (section subtotals are interleaved under their sections) */}
+                {isLastPage && grandRow}
+              </tbody>
+            </table>
+
+            {!isLastPage && contLine}
+
+            {/* Amount in words, signatures and the page footer strip form ONE
+                unbreakable block on the last page: the strip must never strand
+                alone on an extra page (seen on Bill #71, 2026-10-14). */}
+            <div className={isLastPage ? 'break-inside-avoid' : ''} style={isLastPage ? { pageBreakInside: 'avoid' } : undefined}>
+              {isLastPage && lastBlockInner}
+              {renderFooter(currentPageNum, totalPages)}
             </div>
           </div>
         );
