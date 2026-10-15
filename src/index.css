@@ -185,3 +185,12 @@
 button:not(:disabled) {
   cursor: pointer;
 }
+
+/* Bill rows: vertical spacing is driven by the auto-density level chosen in
+   BillPrintLayout (--brow-py and --brow-lh). Unlayered, so it beats Tailwind's
+   layered padding and leading utilities. Font sizes are never touched. */
+.bill-cell {
+  padding-top: var(--brow-py, 4px);
+  padding-bottom: var(--brow-py, 4px);
+  line-height: var(--brow-lh, 1.4);
+}
