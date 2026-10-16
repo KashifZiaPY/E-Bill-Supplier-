@@ -11,6 +11,7 @@ import {
   FileCheck,
   Lock,
   X,
+  FileUp,
 } from 'lucide-react';
 import type {
   CatalogItem,
@@ -32,6 +33,7 @@ import {
 import { getSuggestedNextNo } from '../utils/lifoHelper';
 import { getFirmDashboardTheme } from '../utils/firmTheme';
 import { FirmBanner } from './FirmBanner';
+import { PoImportModal, type PoApplyPayload } from './PoImportModal';
 
 interface Props {
   initialDoc?: Partial<DocumentRecord> | null;
@@ -151,6 +153,7 @@ export const EntryFormScreen: React.FC<Props> = ({
   });
 
   const [formError, setFormError] = useState<string>('');
+  const [showPoImport, setShowPoImport] = useState<boolean>(false);
   const [attemptedSubmit, setAttemptedSubmit] = useState<boolean>(false);
   // Shown briefly when an emptied Date field is restored to today (bill date
   // must never be blank: it is the stored preparation date used by reports).
@@ -355,6 +358,35 @@ export const EntryFormScreen: React.FC<Props> = ({
     if (selectedAddress) setClientAddress(selectedAddress);
     if (selectedNTN) setClientNTN(selectedNTN);
     setShowClientDropdown(false);
+    setFormError('');
+  };
+
+  // PO import: the review modal hands back checked data; filling replaces the
+  // form's client/reference/items wholesale (that is the point of the import).
+  // The bill date is NOT touched — it stays the preparation date (today).
+  const applyPoImport = (payload: PoApplyPayload) => {
+    if (payload.clientName) setClientName(payload.clientName);
+    if (payload.clientAddress) setClientAddress(payload.clientAddress);
+    if (payload.clientNTN) setClientNTN(payload.clientNTN);
+    if (payload.refText) setRefText(payload.refText);
+    if (payload.gstRatePercent !== null && payload.gstRatePercent !== undefined) {
+      setGstRatePercent(payload.gstRatePercent);
+      setIsCustomGstInput(![18, 17, 15, 12, 5, 0].includes(payload.gstRatePercent));
+    }
+    if (payload.items.length > 0) {
+      setItems(payload.items.map((it, idx) => ({
+        id: 'item-po-' + idx + '-' + Date.now(),
+        sr: idx + 1,
+        description: it.description,
+        unit: it.unit || 'Nos',
+        qty: it.qty,
+        rate: it.rate,
+        tax: it.tax,
+        gstRate: it.gstRate,
+        amount: Math.round((Number(it.qty) || 0) * (Number(it.rate) || 0) * 100) / 100,
+      })));
+    }
+    setShowPoImport(false);
     setFormError('');
   };
 
@@ -602,6 +634,17 @@ export const EntryFormScreen: React.FC<Props> = ({
                   </option>
                 ))}
               </select>
+              {docType === 'BILL' && (
+                <button
+                  type="button"
+                  onClick={() => setShowPoImport(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-navy-700 hover:bg-navy-800 text-white text-xs font-bold transition shrink-0"
+                  title="Read a Purchase Order PDF and fill this form"
+                >
+                  <FileUp className="w-4 h-4" />
+                  <span>Import PO</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1083,6 +1126,14 @@ export const EntryFormScreen: React.FC<Props> = ({
           </div>
         </section>
       </main>
+
+      <PoImportModal
+        isOpen={showPoImport}
+        onClose={() => setShowPoImport(false)}
+        clients={clients}
+        activeFirmName={activeFirm.name}
+        onApply={applyPoImport}
+      />
 
       {/* Mobile sticky bar */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-line px-4 py-3 z-40 flex items-center justify-between gap-3 no-print">
