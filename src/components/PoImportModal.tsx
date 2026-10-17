@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { X, FileUp, Loader2, CheckCircle2, AlertTriangle, Trash2, Building2 } from 'lucide-react';
+import { X, FileUp, Loader2, CheckCircle2, AlertTriangle, Trash2, Building2, KeyRound, Sparkles, ExternalLink } from 'lucide-react';
 import type { SavedClient } from '../types/billing';
 import {
   buildPoRefText,
@@ -7,7 +7,8 @@ import {
   type PoData,
   type PoItem,
 } from '../utils/poImport';
-import { extractPoFromPdf } from '../utils/poExtract';
+import { extractPoTextLayer, extractPoWithOcr } from '../utils/poExtract';
+import { extractPoWithGemini, getGeminiKey, setGeminiKey } from '../utils/poGemini';
 
 export interface PoApplyPayload {
   clientName: string;
@@ -26,7 +27,7 @@ interface Props {
   onApply: (payload: PoApplyPayload) => void;
 }
 
-type Phase = 'pick' | 'reading' | 'review' | 'error';
+type Phase = 'pick' | 'reading' | 'needkey' | 'review' | 'error';
 
 const fmt = (n: number) => n.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -57,7 +58,11 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
   const [fileName, setFileName] = useState('');
   const [po, setPo] = useState<PoData | null>(null);
   const [rows, setRows] = useState<PoItem[]>([]);
+  const [keyInput, setKeyInput] = useState('');
+  const [keySaved, setKeySaved] = useState<boolean>(() => !!getGeminiKey());
+  const [geminiFailed, setGeminiFailed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pendingFileRef = useRef<File | null>(null);
 
   const reset = () => {
     setPhase('pick');
@@ -66,6 +71,9 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
     setPo(null);
     setRows([]);
     setFileName('');
+    setKeyInput('');
+    setGeminiFailed(false);
+    pendingFileRef.current = null;
   };
 
   const handleClose = () => {
@@ -73,30 +81,85 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
     onClose();
   };
 
+  const toReview = (data: PoData) => {
+    setPo(data);
+    setRows(data.items.map((it) => ({ ...it })));
+    setPhase('review');
+  };
+
+  const toError = (msg: string, fromGemini = false) => {
+    setError(msg);
+    setGeminiFailed(fromGemini);
+    setPhase('error');
+  };
+
+  const runGemini = async (f: File, key: string) => {
+    setPhase('reading');
+    setProgress('Reading the PO with Gemini AI…');
+    try {
+      const data = await extractPoWithGemini(f, key, setProgress);
+      toReview(data);
+    } catch (e: any) {
+      toError(e?.message || 'Gemini could not read this PO.', true);
+    }
+  };
+
+  const runOcr = async (f: File) => {
+    setPhase('reading');
+    setProgress('Reading with OCR…');
+    try {
+      const data = await extractPoWithOcr(f, setProgress);
+      if (!data.items.length) {
+        toError('OCR could not find an item table in this PDF. Check that it is a Purchase Order, or enter the bill manually.');
+        return;
+      }
+      toReview(data);
+    } catch (e: any) {
+      toError(e?.message || 'OCR could not read this PDF.');
+    }
+  };
+
   const handleFile = async (f: File | undefined) => {
     if (!f) return;
     if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') {
-      setError('Please choose a PDF file — the Purchase Order must be a PDF.');
-      setPhase('error');
+      toError('Please choose a PDF file — the Purchase Order must be a PDF.');
       return;
     }
+    pendingFileRef.current = f;
     setFileName(f.name);
     setPhase('reading');
     setProgress('Reading PDF…');
     try {
-      const data = await extractPoFromPdf(f, setProgress);
-      if (!data.items || data.items.length === 0) {
-        setError('No item table could be read from this PDF. Check that it is a Purchase Order with an items table (Description / Quantity / Price / Amount columns), then try again — or enter the bill manually.');
-        setPhase('error');
+      const data = await extractPoTextLayer(f, setProgress);
+      if (data) {
+        if (!data.items.length) {
+          toError('No item table could be read from this PDF. Check that it is a Purchase Order with an items table (Description / Quantity / Price / Amount columns), then try again — or enter the bill manually.');
+          return;
+        }
+        toReview(data);
         return;
       }
-      setPo(data);
-      setRows(data.items.map((it) => ({ ...it })));
-      setPhase('review');
+      // Picture-only PDF: Gemini Vision is the accurate engine; OCR is the
+      // no-key fallback. Ask for the key once, only when it is needed.
+      const key = getGeminiKey();
+      if (key) {
+        await runGemini(f, key);
+      } else {
+        setPhase('needkey');
+      }
     } catch (e: any) {
-      setError(e?.message || 'Could not read this PDF.');
-      setPhase('error');
+      toError(e?.message || 'Could not read this PDF.');
     }
+  };
+
+  const handleSaveKeyAndRead = async () => {
+    const key = keyInput.trim();
+    if (!key) return;
+    setGeminiKey(key);
+    setKeySaved(true);
+    const f = pendingFileRef.current;
+    if (f) await runGemini(f, key);
+    else setPhase('pick');
   };
 
   const editedPo: PoData | null = useMemo(() => (po ? { ...po, items: rows } : null), [po, rows]);
@@ -192,7 +255,7 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
               >
                 <FileUp className="w-9 h-9 text-navy-700" />
                 <span className="font-bold text-navy-900 text-sm">Choose the Purchase Order PDF</span>
-                <span className="text-xs text-ink-500 text-center">Text PDFs read instantly. Picture/scanned PDFs are read with OCR<br className="hidden sm:block" /> and every figure is cross-checked against the PO's own totals.</span>
+                <span className="text-xs text-ink-500 text-center">Text PDFs read instantly. Picture/scanned PDFs are read by Gemini AI (OCR fallback)<br className="hidden sm:block" /> and every figure is cross-checked against the PO's own totals.</span>
               </button>
               <input
                 ref={fileRef}
@@ -201,6 +264,72 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
                 className="hidden"
                 onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ''; }}
               />
+              <div className="mt-4 flex items-center justify-center gap-2 text-[11px] text-ink-500">
+                {keySaved ? (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>AI reading ready — your Gemini key is saved in this browser.</span>
+                    <button
+                      type="button"
+                      onClick={() => { setGeminiKey(''); setKeySaved(false); }}
+                      className="font-bold text-[#b3372f] hover:underline"
+                    >
+                      Remove key
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Picture/scanned POs read best with a free Gemini key — you will be asked for it once, only if a PO needs it.</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {phase === 'needkey' && (
+            <div className="py-2 max-w-lg mx-auto">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-5 h-5 text-navy-700" />
+                <h3 className="font-extrabold text-navy-900 text-[15px]">This PO is a picture PDF — AI reading recommended</h3>
+              </div>
+              <p className="text-[13px] text-ink-600 mb-3">
+                This PDF has no text inside, so the app must "look" at it. Gemini AI reads such POs far more
+                accurately than plain OCR. It needs a <strong>free API key</strong> from Google AI Studio (no card):
+              </p>
+              <ol className="text-[13px] text-ink-600 list-decimal ml-5 space-y-1 mb-3">
+                <li>
+                  Open{' '}
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="font-bold text-navy-800 underline inline-flex items-center gap-0.5">
+                    aistudio.google.com/apikey <ExternalLink className="w-3 h-3" />
+                  </a>{' '}
+                  and sign in with any Google account
+                </li>
+                <li>Click <strong>"Create API key"</strong> and copy the key</li>
+                <li>Paste it here — it is saved only in this browser, never in the app code</li>
+              </ol>
+              <input
+                type="password"
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                placeholder="Paste your Gemini API key"
+                className="corp-input font-mono text-xs mb-2"
+                autoComplete="off"
+              />
+              <p className="text-[11px] text-ink-400 mb-4">Note: reading with Gemini sends the PO page image to Google. A normal purchase order only — do not use it for anything private.</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button type="button" onClick={handleSaveKeyAndRead} disabled={!keyInput.trim()} className="corp-btn-gold disabled:opacity-50 flex-1">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Save key &amp; read this PO</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { const f = pendingFileRef.current; if (f) runOcr(f); }}
+                  className="px-4 py-2.5 rounded-xl border border-line font-bold text-sm text-ink-600 hover:bg-paper transition"
+                >
+                  Use OCR instead (no key)
+                </button>
+              </div>
             </div>
           )}
 
@@ -208,7 +337,7 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
             <div className="py-12 flex flex-col items-center gap-3">
               <Loader2 className="w-9 h-9 text-navy-700 animate-spin" />
               <p className="text-sm font-semibold text-ink-700 text-center">{progress}</p>
-              <p className="text-xs text-ink-400">Keep this open — OCR of a picture PDF can take up to a minute.</p>
+              <p className="text-xs text-ink-400">Keep this open — reading a picture PDF can take a little while.</p>
             </div>
           )}
 
@@ -216,7 +345,27 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
             <div className="py-8 flex flex-col items-center gap-3 text-center">
               <AlertTriangle className="w-9 h-9 text-amber-500" />
               <p className="text-sm font-semibold text-ink-800 max-w-md">{error}</p>
-              <button type="button" onClick={reset} className="corp-btn-gold !py-2 mt-1">Try another file</button>
+              <div className="flex flex-col sm:flex-row gap-2 mt-1">
+                <button type="button" onClick={reset} className="corp-btn-gold !py-2">Try another file</button>
+                {geminiFailed && pendingFileRef.current && (
+                  <button
+                    type="button"
+                    onClick={() => { const f = pendingFileRef.current; if (f) runOcr(f); }}
+                    className="px-4 py-2 rounded-xl border border-line font-bold text-sm text-ink-600 hover:bg-paper transition"
+                  >
+                    Read this PO with OCR instead
+                  </button>
+                )}
+                {geminiFailed && (
+                  <button
+                    type="button"
+                    onClick={() => setPhase('needkey')}
+                    className="px-4 py-2 rounded-xl border border-line font-bold text-sm text-ink-600 hover:bg-paper transition"
+                  >
+                    Re-enter key
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -239,7 +388,7 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
                   <span className="corp-label !mb-0.5">Reference that will be filled</span>
                   <div className="font-bold text-ink-900">{buildPoRefText(po) || '—'}</div>
                   <div className="text-[11px] text-ink-500 mt-0.5">
-                    Supplier on PO: <strong>{po.supplier || '—'}</strong> · Read via {po.source === 'text' ? 'PDF text (exact)' : 'OCR — please verify flagged rows'}
+                    Supplier on PO: <strong>{po.supplier || '—'}</strong> · Read via {po.source === 'text' ? 'PDF text (exact)' : po.source === 'gemini' ? 'Gemini AI — figures cross-checked below' : 'OCR — please verify flagged rows'}
                   </div>
                 </div>
               </div>
