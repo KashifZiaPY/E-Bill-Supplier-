@@ -18,7 +18,11 @@ import { buildPoItems, type PoData } from './poImport';
 import { renderPdfPageCanvas, type ProgressFn } from './poExtract';
 
 const KEY_STORAGE = 'bill-gemini-api-key';
-const MODEL = 'gemini-2.5-flash';
+// Model availability differs per key age: Google told a brand-new key
+// (2026-10-17) that gemini-2.5-flash "is no longer available to new users"
+// and named gemini-3.8-flash as the current model. Try in order, falling
+// through on 404 only, so both new and older keys keep working.
+const MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 
 export function getGeminiKey(): string {
   try { return localStorage.getItem(KEY_STORAGE) || ''; } catch { return ''; }
@@ -137,24 +141,30 @@ export async function extractPoWithGemini(file: File, apiKey: string, onProgress
   onProgress('Reading the PO with Gemini AI…');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120000);
-  let res: Response;
+  let res: Response | null = null;
+  let body: any = null;
   try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: {
-            temperature: 0,
-            responseMimeType: 'application/json',
-            responseSchema: RESPONSE_SCHEMA,
-          },
-        }),
-        signal: controller.signal,
-      }
-    );
+    for (const model of MODELS) {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              temperature: 0,
+              responseMimeType: 'application/json',
+              responseSchema: RESPONSE_SCHEMA,
+            },
+          }),
+          signal: controller.signal,
+        }
+      );
+      body = await res.json().catch(() => null);
+      if (res.status !== 404) break; // 404 = model not available to this key — try the next
+      res = null;
+    }
   } catch (e: any) {
     throw new Error(
       e?.name === 'AbortError'
@@ -165,7 +175,9 @@ export async function extractPoWithGemini(file: File, apiKey: string, onProgress
     clearTimeout(timer);
   }
 
-  const body: any = await res.json().catch(() => null);
+  if (!res) {
+    throw new Error('No Gemini model is available to this API key right now. You can try OCR instead, or check the key in AI Studio.');
+  }
   if (!res.ok) {
     const gmsg = String(body?.error?.message || '');
     if (res.status === 400 && /api key/i.test(gmsg)) {
