@@ -45,7 +45,55 @@ export interface PoData {
   totalExclusive: number | null;
   totalTax: number | null;
   totalInclusive: number | null;
-  source: 'text' | 'ocr';
+  source: 'text' | 'ocr' | 'gemini';
+}
+
+/** A raw extracted row, before shared finalizing (used by every engine). */
+export interface PoRawItem {
+  itemName: string;
+  specification: string;
+  unitRaw: string;
+  qty: number;
+  rate: number;
+  amount: number;
+  taxAmount: number;
+}
+
+/**
+ * Shared finalize for all extraction engines (text parser, OCR, Gemini):
+ * derive any one missing figure from the other two, repair a lost-decimal
+ * tax figure, combine description and normalize the unit.
+ */
+export function buildPoItems(raw: PoRawItem[]): PoItem[] {
+  const items: PoItem[] = [];
+  for (const r of raw) {
+    const itemName = (r.itemName || '').replace(/\s+/g, ' ').trim();
+    const specification = (r.specification || '').replace(/\s+/g, ' ').trim();
+    let qty = Number(r.qty) || 0;
+    let rate = Number(r.rate) || 0;
+    let amount = Number(r.amount) || 0;
+    if (!amount && qty && rate) amount = Math.round(qty * rate * 100) / 100;
+    if (!rate && qty && amount) rate = Math.round((amount / qty) * 100) / 100;
+    if (!qty && rate && amount) qty = Math.round((amount / rate) * 100) / 100;
+    if (!itemName && !specification && !amount && !qty) continue;
+    let taxAmount = Number(r.taxAmount) || 0;
+    // Classic reading slip: the decimal point of the tax figure is lost
+    // ("45.00" → "4500", an impossible 1800% rate). One shift repairs it.
+    if (amount > 0 && taxAmount > amount * 0.5 && taxAmount / 100 <= amount * 0.35) {
+      taxAmount = Math.round((taxAmount / 100) * 100) / 100;
+    }
+    items.push({
+      itemName,
+      specification,
+      description: combinePoDescription(itemName, specification),
+      unit: normalizePoUnit(r.unitRaw || ''),
+      qty,
+      rate,
+      amount,
+      taxAmount,
+    });
+  }
+  return items;
 }
 
 interface PoLine {
@@ -301,35 +349,15 @@ function parsePageRows(lines: PoLine[], page: number): PoItem[] {
     rows.push(row);
   }
 
-  const items: PoItem[] = [];
-  for (const r of rows) {
-    const itemName = r.desc.join(' ').replace(/\s+/g, ' ').trim();
-    const specification = r.spec.join(' ').replace(/\s+/g, ' ').trim();
-    let qty = r.qty ?? 0;
-    let rate = r.rate ?? 0;
-    let amount = r.amount ?? 0;
-    if (!amount && qty && rate) amount = Math.round(qty * rate * 100) / 100;
-    if (!rate && qty && amount) rate = Math.round((amount / qty) * 100) / 100;
-    if (!qty && rate && amount) qty = Math.round((amount / rate) * 100) / 100;
-    if (!itemName && !specification && !amount && !qty) continue;
-    let taxAmount = r.tax ?? 0;
-    // Classic OCR slip: the decimal point of the tax figure is lost
-    // ("45.00" → "4500", an impossible 1800% rate). One shift repairs it.
-    if (amount > 0 && taxAmount > amount * 0.5 && taxAmount / 100 <= amount * 0.35) {
-      taxAmount = Math.round((taxAmount / 100) * 100) / 100;
-    }
-    items.push({
-      itemName,
-      specification,
-      description: combinePoDescription(itemName, specification),
-      unit: normalizePoUnit(r.unit.join(' ')),
-      qty,
-      rate,
-      amount,
-      taxAmount,
-    });
-  }
-  return items;
+  return buildPoItems(rows.map((r) => ({
+    itemName: r.desc.join(' '),
+    specification: r.spec.join(' '),
+    unitRaw: r.unit.join(' '),
+    qty: r.qty ?? 0,
+    rate: r.rate ?? 0,
+    amount: r.amount ?? 0,
+    taxAmount: r.tax ?? 0,
+  })));
 }
 
 function lastNumberIn(line: PoLine): number | null {
@@ -341,7 +369,7 @@ function lastNumberIn(line: PoLine): number | null {
 }
 
 /** Parse positioned words (any page count) into structured PO data. */
-export function parsePoWords(words: PoWord[], source: 'text' | 'ocr'): PoData {
+export function parsePoWords(words: PoWord[], source: PoData['source']): PoData {
   const lines = groupPoLines(words);
   const pages = Array.from(new Set(words.map((w) => w.page))).sort((a, b) => a - b);
   const allText = lines.map((l) => l.text).join('\n');

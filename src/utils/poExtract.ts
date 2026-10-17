@@ -1,21 +1,49 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// PO PDF extraction (browser). Two passes, in order:
+// PO PDF extraction (browser). Three engines, in order of preference:
 //   1. TEXT LAYER — pdf.js reads the PDF's embedded text with positions.
 //      Exact and instant when the PO system generated a real text PDF.
-//   2. OCR — many PO systems (e.g. the e-procurement portal this app's
-//      sample came from) export the PO as a picture inside a PDF: the text
-//      layer is empty. Each page is then rendered to a canvas and read with
-//      Tesseract OCR (word boxes via TSV). Slower (~30–60s) and imperfect —
-//      which is exactly why parse results always pass through validatePo()
-//      and a mandatory review screen before anything reaches the bill form.
-// Both libraries are dynamic-imported so they never weigh down the app's
-// normal bundle; they load only when a PO import is started.
+//   2. GEMINI VISION — many PO systems (e.g. the e-procurement portal this
+//      app's sample came from) export the PO as a picture inside a PDF:
+//      the text layer is empty. The page image is then read by Google's
+//      Gemini vision model, which understands the table as a whole and is
+//      far more accurate than character OCR (see poGemini.ts).
+//   3. TESSERACT OCR — no-key fallback for picture PDFs. Slower (~30–60s)
+//      and imperfect.
+// Whichever engine produced the data, it always passes through
+// validatePo() and a mandatory review screen before anything reaches the
+// bill form. All libraries are dynamic-imported so they never weigh down
+// the app's normal bundle.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { PoWord } from './poImport';
 import { parsePoWords, type PoData } from './poImport';
 
-type ProgressFn = (msg: string) => void;
+export type ProgressFn = (msg: string) => void;
+
+async function openPdf(file: File): Promise<any> {
+  const pdfjs: any = await import('pdfjs-dist');
+  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  const buf = await file.arrayBuffer();
+  return pdfjs.getDocument({ data: buf }).promise;
+}
+
+/** Render one PDF page to a canvas at the requested pixel width. */
+export async function renderPdfPageCanvas(pdf: any, pageNo: number, targetWidth: number): Promise<HTMLCanvasElement> {
+  const page = await pdf.getPage(pageNo);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(5, targetWidth / base.width);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not prepare the page image.');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+  return canvas;
+}
 
 /** Split one pdf.js text item into positioned word tokens. */
 function splitItemWords(str: string, x: number, y: number, w: number, h: number, page: number): PoWord[] {
@@ -38,6 +66,34 @@ function splitItemWords(str: string, x: number, y: number, w: number, h: number,
     });
   }
   return out;
+}
+
+/**
+ * Pass 1 — embedded text layer. Returns parsed data when the PDF carries a
+ * real text layer, or null when it is a picture-only PDF.
+ */
+export async function extractPoTextLayer(file: File, onProgress: ProgressFn): Promise<PoData | null> {
+  onProgress('Reading PDF…');
+  const pdf = await openPdf(file);
+  const textWords: PoWord[] = [];
+  let textChars = 0;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    for (const item of tc.items as any[]) {
+      if (!item || typeof item.str !== 'string') continue;
+      const str = item.str;
+      textChars += str.replace(/\s+/g, '').length;
+      const [, , , d, e, f] = item.transform || [1, 0, 0, 1, 0, 0];
+      const h = Math.abs(item.height || d || 10);
+      // pdf.js text space is bottom-up; flip y so larger = lower on page,
+      // matching OCR's top-down boxes.
+      textWords.push(...splitItemWords(str, e || 0, -(f || 0), item.width || 0, h, p));
+    }
+  }
+  if (textChars < 120) return null;
+  onProgress('Text found in PDF — reading it directly…');
+  return parsePoWords(textWords, 'text');
 }
 
 function parseTsvWords(tsv: string, page: number): PoWord[] {
@@ -63,38 +119,10 @@ function parseTsvWords(tsv: string, page: number): PoWord[] {
   return out;
 }
 
-export async function extractPoFromPdf(file: File, onProgress: ProgressFn): Promise<PoData> {
-  onProgress('Reading PDF…');
-  const pdfjs: any = await import('pdfjs-dist');
-  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: buf }).promise;
-
-  // ── Pass 1: embedded text layer ──────────────────────────────────────────
-  const textWords: PoWord[] = [];
-  let textChars = 0;
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p);
-    const tc = await page.getTextContent();
-    for (const item of tc.items as any[]) {
-      if (!item || typeof item.str !== 'string') continue;
-      const str = item.str;
-      textChars += str.replace(/\s+/g, '').length;
-      const [, , , d, e, f] = item.transform || [1, 0, 0, 1, 0, 0];
-      const h = Math.abs(item.height || d || 10);
-      // pdf.js text space is bottom-up; flip y so larger = lower on page,
-      // matching OCR's top-down boxes.
-      textWords.push(...splitItemWords(str, e || 0, -(f || 0), item.width || 0, h, p));
-    }
-  }
-  if (textChars >= 120) {
-    onProgress('Text found in PDF — reading it directly…');
-    return parsePoWords(textWords, 'text');
-  }
-
-  // ── Pass 2: image-only PDF → OCR ─────────────────────────────────────────
-  onProgress('This PDF is a scanned/picture PDF — starting OCR (this can take a minute)…');
+/** Pass 3 — Tesseract OCR fallback for picture PDFs (no Gemini key). */
+export async function extractPoWithOcr(file: File, onProgress: ProgressFn): Promise<PoData> {
+  onProgress('Starting OCR — this can take up to a minute…');
+  const pdf = await openPdf(file);
   const Tesseract: any = await import('tesseract.js');
   const worker = await Tesseract.createWorker('eng');
   try {
@@ -102,21 +130,10 @@ export async function extractPoFromPdf(file: File, onProgress: ProgressFn): Prom
     const ocrWords: PoWord[] = [];
     for (let p = 1; p <= pdf.numPages; p++) {
       onProgress(`Reading page ${p} of ${pdf.numPages} with OCR…`);
-      const page = await pdf.getPage(p);
-      const base = page.getViewport({ scale: 1 });
       // ~4600px wide: OCR digit accuracy on these portal POs collapses at
       // lower resolutions (verified on the sample — "1,350.00" reads as
       // garbage at 3300px, cleanly at ~4900px).
-      const scale = Math.min(5, 4600 / base.width);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Could not prepare the page image for OCR.');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+      const canvas = await renderPdfPageCanvas(pdf, p, 4600);
       const { data } = await worker.recognize(canvas, {}, { tsv: true, text: true });
       if (data?.tsv) ocrWords.push(...parseTsvWords(data.tsv, p));
       else if (data?.text) {
