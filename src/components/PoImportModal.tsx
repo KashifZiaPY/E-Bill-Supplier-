@@ -346,7 +346,17 @@ export const PoImportModal: React.FC<Props> = ({ isOpen, onClose, clients, activ
               <AlertTriangle className="w-9 h-9 text-amber-500" />
               <p className="text-sm font-semibold text-ink-800 max-w-md">{error}</p>
               <div className="flex flex-col sm:flex-row gap-2 mt-1">
-                <button type="button" onClick={reset} className="corp-btn-gold !py-2">Try another file</button>
+                {geminiFailed && pendingFileRef.current && getGeminiKey() ? (
+                  <button
+                    type="button"
+                    onClick={() => { const f = pendingFileRef.current; const k = getGeminiKey(); if (f && k) runGemini(f, k); }}
+                    className="corp-btn-gold !py-2"
+                  >
+                    Try again
+                  </button>
+                ) : (
+                  <button type="button" onClick={reset} className="corp-btn-gold !py-2">Try another file</button>
+                )}
                 {geminiFailed && pendingFileRef.current && (
                   <button
                     type="button"

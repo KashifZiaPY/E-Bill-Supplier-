@@ -140,53 +140,75 @@ export async function extractPoWithGemini(file: File, apiKey: string, onProgress
 
   onProgress('Reading the PO with Gemini AI…');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120000);
+  const timer = setTimeout(() => controller.abort(), 150000);
+  const payload = JSON.stringify({
+    contents: [{ parts }],
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: 'application/json',
+      responseSchema: RESPONSE_SCHEMA,
+    },
+  });
+  // Fall through to the next model whenever one is unavailable to this key
+  // (404), busy (503 — each model has its own demand pool) or quota-limited
+  // (429 — quotas are per-model too). If every model is busy, wait a few
+  // seconds and run the whole chain once more before giving up.
   let res: Response | null = null;
   let body: any = null;
+  let lastStatus = 0;
+  let sawTransient = false;
   try {
-    for (const model of MODELS) {
-      res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify({
-            contents: [{ parts }],
-            generationConfig: {
-              temperature: 0,
-              responseMimeType: 'application/json',
-              responseSchema: RESPONSE_SCHEMA,
-            },
-          }),
-          signal: controller.signal,
-        }
-      );
-      body = await res.json().catch(() => null);
-      if (res.status !== 404) break; // 404 = model not available to this key — try the next
-      res = null;
+    for (let round = 0; round < 2 && !res; round++) {
+      if (round > 0) {
+        onProgress('Gemini is busy — waiting a few seconds and trying again…');
+        await new Promise((r) => setTimeout(r, 6000));
+      }
+      for (const model of MODELS) {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+            body: payload,
+            signal: controller.signal,
+          }
+        );
+        const b = await r.json().catch(() => null);
+        if (r.ok) { res = r; body = b; break; }
+        lastStatus = r.status;
+        body = b;
+        if (r.status === 404) continue;
+        if (r.status === 503 || r.status === 429) { sawTransient = true; continue; }
+        res = r; // any other error (e.g. 400 invalid key) stops the chain
+        break;
+      }
+      if (!sawTransient) break; // nothing transient to wait out — no second round
     }
   } catch (e: any) {
     throw new Error(
       e?.name === 'AbortError'
-        ? 'Gemini took too long to respond (over 2 minutes). Check your internet and try again, or use OCR instead.'
+        ? 'Gemini took too long to respond. Check your internet and try again, or use OCR instead.'
         : 'Could not reach Gemini. Check your internet connection and try again, or use OCR instead.'
     );
   } finally {
     clearTimeout(timer);
   }
 
-  if (!res) {
-    throw new Error('No Gemini model is available to this API key right now. You can try OCR instead, or check the key in AI Studio.');
-  }
-  if (!res.ok) {
+  if (!res || !res.ok) {
     const gmsg = String(body?.error?.message || '');
-    if (res.status === 400 && /api key/i.test(gmsg)) {
-      throw new Error('That Gemini API key was not accepted. Check the key and try again.');
+    if (lastStatus === 400 && /api key/i.test(gmsg)) {
+      throw new Error('That Gemini API key was not accepted. Re-enter the key and try again.');
     }
-    if (res.status === 429) {
-      throw new Error('Gemini free quota is busy right now. Wait a minute and try again, or use OCR instead.');
+    if (lastStatus === 404) {
+      throw new Error('No Gemini model is available to this API key right now. You can use OCR instead.');
     }
-    throw new Error(`Gemini could not read this PO (${res.status}${gmsg ? `: ${gmsg}` : ''}). You can try OCR instead.`);
+    if (lastStatus === 503) {
+      throw new Error('Gemini is busy right now (high demand — this is temporary). Press Try again in a minute, or use OCR instead.');
+    }
+    if (lastStatus === 429) {
+      throw new Error('Gemini free quota is used up for now. Wait a few minutes and press Try again, or use OCR instead.');
+    }
+    throw new Error('Gemini could not read this PO. Press Try again, or use OCR instead.');
   }
 
   const text = (body?.candidates?.[0]?.content?.parts || [])
